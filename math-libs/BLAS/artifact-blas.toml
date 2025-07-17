@@ -66,6 +66,11 @@ include = [
   "bin/hipblaslt_gentest.py",
   "bin/hipblaslt_gtest.data",
   "bin/hipblaslt_*.yaml",
+  # Additional client files
+  "bin/common/**",
+  "common/**",
+  "clients/common/**",
+  "bin/clients/common/**",
 ]
 
 # rocBLAS
