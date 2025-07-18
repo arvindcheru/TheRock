@@ -97,35 +97,60 @@ jobs:
       #   run: |
       #     python external-builds/pytorch/pytorch_torch_repo.py checkout --no-hipify --no-patch
 
-      - name: Set up virtual environment and install requirements
+      # - name: Set up virtual environment and install requirements
+      #   run: |
+      #     python build_tools/setup_venv.py ${VENV_DIR} \
+      #       --packages torch==${TORCH_VERSION} \
+      #       --index-url ${{ inputs.cloudfront_url }} \
+      #       --index-subdir ${{ inputs.amdgpu_family }}
+      #     . ${VENV_DIR}/Scripts/activate
+      #     echo "venv setup complete"
+      #     which python
+      #     pip freeze
+      #     echo "install test requirements"
+      #     python -m pip install -r external-builds/pytorch/requirements-test.txt
+      #     echo "installed test requirements"
+      #     pip freeze
+      #   # if [ "${{ runner.os }}" != "Windows" ]; then source ${VENV_DIR}/bin/activate ; else . ${VENV_DIR}/Scripts/activate ; fi
+
+      - name: Set up virtual environment
         run: |
           python build_tools/setup_venv.py ${VENV_DIR} \
             --packages torch==${TORCH_VERSION} \
             --index-url ${{ inputs.cloudfront_url }} \
-            --index-subdir ${{ inputs.amdgpu_family }}
-          . ${VENV_DIR}/Scripts/activate
-          echo "venv setup complete"
+            --index-subdir ${{ inputs.amdgpu_family }} \
+            --activate-in-future-github-actions-steps
+
+      - name: Install test requirements
+        run: |
           which python
           pip freeze
-          echo "install test requirements"
           python -m pip install -r external-builds/pytorch/requirements-test.txt
-          echo "installed test requirements"
           pip freeze
-        # if [ "${{ runner.os }}" != "Windows" ]; then source ${VENV_DIR}/bin/activate ; else . ${VENV_DIR}/Scripts/activate ; fi
+
 
       - name: Run rocm-sdk sanity tests
         run: |
-          which python
-          . ${VENV_DIR}/Scripts/activate
-          which python
           rocm-sdk test
-        # if [ "${{ runner.os }}" != "Windows" ]; then source ${VENV_DIR}/bin/activate ; else . ${VENV_DIR}/Scripts/activate ; fi
 
       - name: Run PyTorch smoketests
         run: |
-          . ${VENV_DIR}/Scripts/activate
           pytest -v external-builds/pytorch/smoke-tests
-      # if [ "${{ runner.os }}" != "Windows" ]; then source ${VENV_DIR}/bin/activate ; else . ${VENV_DIR}/Scripts/activate ; fi
+
+
+      # - name: Run rocm-sdk sanity tests
+      #   run: |
+      #     which python
+      #     . ${VENV_DIR}/Scripts/activate
+      #     which python
+      #     rocm-sdk test
+      #   # if [ "${{ runner.os }}" != "Windows" ]; then source ${VENV_DIR}/bin/activate ; else . ${VENV_DIR}/Scripts/activate ; fi
+
+      # - name: Run PyTorch smoketests
+      #   run: |
+      #     . ${VENV_DIR}/Scripts/activate
+      #     pytest -v external-builds/pytorch/smoke-tests
+      # # if [ "${{ runner.os }}" != "Windows" ]; then source ${VENV_DIR}/bin/activate ; else . ${VENV_DIR}/Scripts/activate ; fi
 
       # - name: Run PyTorch tests (Linux)
       #   if: ${{ runner.os }} == "Linux"

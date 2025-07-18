@@ -32,12 +32,14 @@ There are a few modes this can be used in:
 """
 
 import argparse
+import os
 from pathlib import Path
 import platform
 import shlex
 import shutil
 import subprocess
 import sys
+from typing import Mapping
 
 THIS_DIR = Path(__file__).resolve().parent
 
@@ -58,6 +60,29 @@ def exec(args: list[str | Path], cwd: Path = Path.cwd()):
     args = [str(arg) for arg in args]
     log(f"++ Exec [{cwd}]$ {shlex.join(args)}")
     subprocess.check_call(args, cwd=str(cwd), stdin=subprocess.DEVNULL)
+
+
+def add_to_github_path(new_path: str | Path):
+    """Adds an entry to the system PATH for future GitHub Actions workflow run steps.
+    See https://docs.github.com/en/actions/reference/workflow-commands-for-github-actions#example-of-adding-a-system-path
+    """
+    print(f"Adding to github path:\n  '{new_path}'")
+    path_file = os.getenv("GITHUB_PATH")
+    if not path_file:
+        print("  Warning: GITHUB_PATH env var not set, can't add to github path")
+        return
+    with open(path_file, "a") as f:
+        f.write(str(new_path))
+
+
+def set_github_env(vars: Mapping[str, str | Path]):
+    env_file = os.getenv("GITHUB_ENV")
+    print(f"Setting github env:\n  {vars}")
+    if not env_file:
+        print("  Warning: GITHUB_ENV env var not set, can't add to github path")
+        return
+    with open(env_file, "a") as f:
+        f.writelines(f"{k}={str(v)}" + "\n" for k, v in vars.items())
 
 
 def find_venv_python(venv_path: Path) -> Path | None:
@@ -121,6 +146,35 @@ def install_packages(args: argparse.Namespace):
     exec(command)
 
 
+def activate_venv_in_gha(venv_dir: Path):
+    log("")
+    log(f"Activating venv at '{venv_dir}'")
+
+    if is_windows:
+        # which_python = shutil.which("python")
+        # log(f"  which python before: {which_python}")
+        # os.environ["PATH"] = str(venv_dir / "Scripts") + os.pathsep + os.environ["PATH"]
+        # os.environ["VIRTUAL_ENV"] = str(venv_dir)
+        # log("  Modified PATH and VIRTUAL_ENV")
+        # which_python = shutil.which("python")
+        # log(f"  which python after: {which_python}")
+
+        add_to_github_path(venv_dir / "Scripts")
+        set_github_env({"VIRTUAL_ENV": venv_dir})
+    else:
+        # Not yet implemented.
+        pass
+
+
+def log_activate_instructions(venv_dir: Path):
+    log("")
+    log(f"Setup complete at '{venv_dir}'! Activate the venv with:")
+    if is_windows:
+        log(f"  {venv_dir}\\Scripts\\activate.bat")
+    else:
+        log(f"  source {venv_dir}/bin/activate")
+
+
 def run(args: argparse.Namespace):
     venv_dir = args.venv_dir
 
@@ -135,13 +189,10 @@ def run(args: argparse.Namespace):
     if args.packages:
         install_packages(args)
 
-    # Done with setup, log some useful information then exit.
-    log("")
-    log(f"Setup complete at '{venv_dir}'! Activate the venv with:")
-    if is_windows:
-        log(f"  {venv_dir}\\Scripts\\activate.bat")
+    if args.activate_in_future_github_actions_steps:
+        activate_venv_in_gha(venv_dir)
     else:
-        log(f"  source {venv_dir}/bin/activate")
+        log_activate_instructions(venv_dir)
 
 
 def main(argv: list[str]):
@@ -162,6 +213,11 @@ def main(argv: list[str]):
         "--disable-cache",
         action=argparse.BooleanOptionalAction,
         help="Disables the pip cache through the --no-cache-dir option",
+    )
+    general_options.add_argument(
+        "--activate-in-future-github-actions-steps",
+        action=argparse.BooleanOptionalAction,
+        help="Attempts to activate the venv persistently when running in a GitHub Action. This is less reliable than running the official activate command",
     )
 
     install_options = p.add_argument_group("Install options")
