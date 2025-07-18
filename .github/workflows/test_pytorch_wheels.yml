@@ -92,24 +92,27 @@ jobs:
       #   run: |
       #     python external-builds/pytorch/pytorch_torch_repo.py checkout --no-hipify --no-patch
 
-      # - name: Set up virtual environment and install requirements
-      #   run: |
-      #     python build_tools/setup_venv.py ${VENV_DIR} \
-      #       --packages torch==${TORCH_VERSION} \
-      #       --index-url ${{ inputs.cloudfront_url }} \
-      #       --index-subdir ${{ inputs.amdgpu_family }}
-      #     if [ "${{ runner.os }}" != "Windows" ]; then source ${VENV_DIR}/bin/activate ; else . ${VENV_DIR}/Scripts/activate ; fi
-      #     python -m pip install -r external-builds/pytorch/requirements-test.txt
+      - name: Set up virtual environment and install requirements
+        run: |
+          python build_tools/setup_venv.py ${VENV_DIR} \
+            --packages torch==${TORCH_VERSION} \
+            --index-url ${{ inputs.cloudfront_url }} \
+            --index-subdir ${{ inputs.amdgpu_family }}
+          ${VENV_DIR}/Scripts/activate
+          python -m pip install -r external-builds/pytorch/requirements-test.txt
+        # if [ "${{ runner.os }}" != "Windows" ]; then source ${VENV_DIR}/bin/activate ; else . ${VENV_DIR}/Scripts/activate ; fi
 
-      # - name: Run rocm-sdk sanity tests
-      #   run: |
-      #     if [ "${{ runner.os }}" != "Windows" ]; then source ${VENV_DIR}/bin/activate ; else . ${VENV_DIR}/Scripts/activate ; fi
-      #     rocm-sdk test
+      - name: Run rocm-sdk sanity tests
+        run: |
+          ${VENV_DIR}/Scripts/activate
+          rocm-sdk test
+        # if [ "${{ runner.os }}" != "Windows" ]; then source ${VENV_DIR}/bin/activate ; else . ${VENV_DIR}/Scripts/activate ; fi
 
-      # - name: Run PyTorch smoketests
-      #   run: |
-      #     if [ "${{ runner.os }}" != "Windows" ]; then source ${VENV_DIR}/bin/activate ; else . ${VENV_DIR}/Scripts/activate ; fi
-      #     pytest -v external-builds/pytorch/smoke-tests
+      - name: Run PyTorch smoketests
+        run: |
+          ${VENV_DIR}/Scripts/activate
+          pytest -v external-builds/pytorch/smoke-tests
+      # if [ "${{ runner.os }}" != "Windows" ]; then source ${VENV_DIR}/bin/activate ; else . ${VENV_DIR}/Scripts/activate ; fi
 
       # - name: Run PyTorch tests (Linux)
       #   if: ${{ runner.os }} == "Linux"
