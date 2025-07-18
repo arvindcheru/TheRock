@@ -6,11 +6,13 @@ on:
       amdgpu_family:
         required: true
         type: string
-        default: "gfx94X-dcgpu"
+        # default: "gfx94X-dcgpu"
+        default: "gfx110X-dgpu"
       test_runs_on:
         required: true
         type: string
-        default: "linux-mi300-1gpu-ossci-rocm"
+        # default: "linux-mi300-1gpu-ossci-rocm"
+        default: "windows-strix-halo-gpu-rocm"
       cloudfront_url:
         description: CloudFront URL pointing to Python index
         required: true
@@ -23,6 +25,8 @@ on:
       torch_version:
         required: true
         type: string
+        #
+        default: 2.7.0a0+rocm7.0.0rc20250717
 
   workflow_call:
     inputs:
