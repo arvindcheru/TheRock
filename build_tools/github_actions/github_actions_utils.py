@@ -1,4 +1,7 @@
-"""Utilities for working with GitHub Actions from Python."""
+"""Utilities for working with GitHub Actions from Python.
+
+See also https://pypi.org/project/github-action-utils/.
+"""
 
 import os
 from pathlib import Path
