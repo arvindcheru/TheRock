@@ -102,19 +102,27 @@ jobs:
             --packages torch==${TORCH_VERSION} \
             --index-url ${{ inputs.cloudfront_url }} \
             --index-subdir ${{ inputs.amdgpu_family }}
-          ${VENV_DIR}/Scripts/activate
+          . ${VENV_DIR}/Scripts/activate
+          echo "venv setup complete"
+          which python
+          pip freeze
+          echo "install test requirements"
           python -m pip install -r external-builds/pytorch/requirements-test.txt
+          echo "installed test requirements"
+          pip freeze
         # if [ "${{ runner.os }}" != "Windows" ]; then source ${VENV_DIR}/bin/activate ; else . ${VENV_DIR}/Scripts/activate ; fi
 
       - name: Run rocm-sdk sanity tests
         run: |
-          ${VENV_DIR}/Scripts/activate
+          which python
+          . ${VENV_DIR}/Scripts/activate
+          which python
           rocm-sdk test
         # if [ "${{ runner.os }}" != "Windows" ]; then source ${VENV_DIR}/bin/activate ; else . ${VENV_DIR}/Scripts/activate ; fi
 
       - name: Run PyTorch smoketests
         run: |
-          ${VENV_DIR}/Scripts/activate
+          . ${VENV_DIR}/Scripts/activate
           pytest -v external-builds/pytorch/smoke-tests
       # if [ "${{ runner.os }}" != "Windows" ]; then source ${VENV_DIR}/bin/activate ; else . ${VENV_DIR}/Scripts/activate ; fi
 
