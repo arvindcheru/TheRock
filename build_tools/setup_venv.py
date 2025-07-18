@@ -39,9 +39,8 @@ import shlex
 import shutil
 import subprocess
 import sys
-from typing import Mapping
 
-THIS_DIR = Path(__file__).resolve().parent
+from github_actions.github_actions_utils import *
 
 is_windows = platform.system() == "Windows"
 
@@ -60,29 +59,6 @@ def exec(args: list[str | Path], cwd: Path = Path.cwd()):
     args = [str(arg) for arg in args]
     log(f"++ Exec [{cwd}]$ {shlex.join(args)}")
     subprocess.check_call(args, cwd=str(cwd), stdin=subprocess.DEVNULL)
-
-
-def add_to_github_path(new_path: str | Path):
-    """Adds an entry to the system PATH for future GitHub Actions workflow run steps.
-    See https://docs.github.com/en/actions/reference/workflow-commands-for-github-actions#example-of-adding-a-system-path
-    """
-    print(f"Adding to github path:\n  '{new_path}'")
-    path_file = os.getenv("GITHUB_PATH")
-    if not path_file:
-        print("  Warning: GITHUB_PATH env var not set, can't add to github path")
-        return
-    with open(path_file, "a") as f:
-        f.write(str(new_path))
-
-
-def set_github_env(vars: Mapping[str, str | Path]):
-    env_file = os.getenv("GITHUB_ENV")
-    print(f"Setting github env:\n  {vars}")
-    if not env_file:
-        print("  Warning: GITHUB_ENV env var not set, can't add to github path")
-        return
-    with open(env_file, "a") as f:
-        f.writelines(f"{k}={str(v)}" + "\n" for k, v in vars.items())
 
 
 def find_venv_python(venv_path: Path) -> Path | None:
@@ -148,22 +124,28 @@ def install_packages(args: argparse.Namespace):
 
 def activate_venv_in_gha(venv_dir: Path):
     log("")
-    log(f"Activating venv at '{venv_dir}'")
+    log(f"Activating venv for future GitHub Actions workflow steps")
+    gha_warn_if_not_running_on_ci()
+
+    # See https://docs.python.org/3/library/venv.html#how-venvs-work.
+    #
+    # The usual way to activate a venv is to run the platform-specific command:
+    #   POSIX bash         : `source <venv>/bin/activate`
+    #   Windows cmd.exe    : `<venv>\Scripts\activate.bat`
+    #   Windows powershell : `<venv>\Scripts\Activate.ps1`
+    #   etc.
+    #
+    # What these scripts actually do is a combination of setting environment
+    # variables, which we can't normally do (persistently) from a Python script.
+    # However, in the context of a GitHub Actions workflow, we *can* set
+    # environment variables (and job outputs, and step summaries, etc.) using
+    # https://docs.github.com/en/actions/reference/workflow-commands-for-github-actions.
 
     if is_windows:
-        # which_python = shutil.which("python")
-        # log(f"  which python before: {which_python}")
-        # os.environ["PATH"] = str(venv_dir / "Scripts") + os.pathsep + os.environ["PATH"]
-        # os.environ["VIRTUAL_ENV"] = str(venv_dir)
-        # log("  Modified PATH and VIRTUAL_ENV")
-        # which_python = shutil.which("python")
-        # log(f"  which python after: {which_python}")
-
-        add_to_github_path(venv_dir / "Scripts")
-        set_github_env({"VIRTUAL_ENV": venv_dir})
+        gha_add_to_path(venv_dir / "Scripts")
     else:
-        # Not yet implemented.
-        pass
+        gha_add_to_path(venv_dir / "bin")
+    gha_set_env({"VIRTUAL_ENV": venv_dir})
 
 
 def log_activate_instructions(venv_dir: Path):
