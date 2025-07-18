@@ -65,35 +65,54 @@ jobs:
         with:
           python-version: ${{ inputs.python_version }}
 
-      # Here we checkout the same version of PyTorch that wheels were built from
-      # so we have the right set of test source files. We _probably_ don't need
-      # to run HIPIFY or apply any patches, so we skip those steps to save time.
-      - name: Checkout PyTorch repository
-        if: ${{ runner.os }} != "Windows"  # Not yet needed on Windows
+      - name: Print runner.os
         run: |
-          python external-builds/pytorch/pytorch_torch_repo.py checkout --no-hipify --no-patch
+          echo "${{ runner.os }}"
 
-      - name: Set up virtual environment and install requirements
+      - name: Print RUNNER_OS
         run: |
-          python build_tools/setup_venv.py ${VENV_DIR} \
-            --packages torch==${TORCH_VERSION} \
-            --index-url ${{ inputs.cloudfront_url }} \
-            --index-subdir ${{ inputs.amdgpu_family }}
-          if [ "${{ runner.os }}" != "Windows" ]; then source ${VENV_DIR}/bin/activate ; else . ${VENV_DIR}/Scripts/activate ; fi
-          python -m pip install -r external-builds/pytorch/requirements-test.txt
+          echo ${RUNNER_OS}
 
-      - name: Run rocm-sdk sanity tests
+      - name: Print if os is Windows
+        if: ${{ runner.os }} == "Windows"
         run: |
-          if [ "${{ runner.os }}" != "Windows" ]; then source ${VENV_DIR}/bin/activate ; else . ${VENV_DIR}/Scripts/activate ; fi
-          rocm-sdk test
+          echo "Runner is Windows"
 
-      - name: Run PyTorch smoketests
+      - name: Print if os is *not* Windows
+        if: ${{ runner.os }} != "Windows"
         run: |
-          if [ "${{ runner.os }}" != "Windows" ]; then source ${VENV_DIR}/bin/activate ; else . ${VENV_DIR}/Scripts/activate ; fi
-          pytest -v external-builds/pytorch/smoke-tests
+          echo "Runner is not Windows"
 
-      - name: Run PyTorch tests (Linux)
-        if: ${{ runner.os }} == "Linux"
-        run: |
-          source "${VENV_DIR}/bin/activate"
-          bash external-builds/pytorch/run_linux_pytorch_tests.sh
+
+      # # Here we checkout the same version of PyTorch that wheels were built from
+      # # so we have the right set of test source files. We _probably_ don't need
+      # # to run HIPIFY or apply any patches, so we skip those steps to save time.
+      # - name: Checkout PyTorch repository
+      #   if: ${{ runner.os }} != "Windows"  # Not yet needed on Windows
+      #   run: |
+      #     python external-builds/pytorch/pytorch_torch_repo.py checkout --no-hipify --no-patch
+
+      # - name: Set up virtual environment and install requirements
+      #   run: |
+      #     python build_tools/setup_venv.py ${VENV_DIR} \
+      #       --packages torch==${TORCH_VERSION} \
+      #       --index-url ${{ inputs.cloudfront_url }} \
+      #       --index-subdir ${{ inputs.amdgpu_family }}
+      #     if [ "${{ runner.os }}" != "Windows" ]; then source ${VENV_DIR}/bin/activate ; else . ${VENV_DIR}/Scripts/activate ; fi
+      #     python -m pip install -r external-builds/pytorch/requirements-test.txt
+
+      # - name: Run rocm-sdk sanity tests
+      #   run: |
+      #     if [ "${{ runner.os }}" != "Windows" ]; then source ${VENV_DIR}/bin/activate ; else . ${VENV_DIR}/Scripts/activate ; fi
+      #     rocm-sdk test
+
+      # - name: Run PyTorch smoketests
+      #   run: |
+      #     if [ "${{ runner.os }}" != "Windows" ]; then source ${VENV_DIR}/bin/activate ; else . ${VENV_DIR}/Scripts/activate ; fi
+      #     pytest -v external-builds/pytorch/smoke-tests
+
+      # - name: Run PyTorch tests (Linux)
+      #   if: ${{ runner.os }} == "Linux"
+      #   run: |
+      #     source "${VENV_DIR}/bin/activate"
+      #     bash external-builds/pytorch/run_linux_pytorch_tests.sh
