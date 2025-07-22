@@ -129,7 +129,7 @@ jobs:
             build \
             --install-rocm \
             --pip-cache-dir /tmp/pipcache \
-            --index-url "${{ inputs.cloudfront_staging_url }}/${{ inputs.amdgpu_family }}/" \
+            --index-url "${{ inputs.cloudfront_url }}/${{ inputs.amdgpu_family }}/" \
             --clean \
             --output-dir ${{ env.PACKAGE_DIST_DIR }} ${{ env.optional_build_prod_arguments }}
           echo "torch_version=`cd ${{ env.PACKAGE_DIST_DIR }}; python -c 'import glob; print(glob.glob("torch-*.whl")[0].split("-")[1])'`" >> $GITHUB_OUTPUT
