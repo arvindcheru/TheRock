@@ -615,7 +615,6 @@ gpgcheck=0
             traceback.print_exc()
             return False
 
-
 def main():
     """Main entry point for the script."""
     parser = argparse.ArgumentParser(
