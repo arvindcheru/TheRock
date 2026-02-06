@@ -117,7 +117,7 @@ jobs:
       - name: Install System Prerequisites
         run: |
           echo "Installing prerequisites for ${{ inputs.native_package_type }} on container"
-          
+
           if [ "${{ inputs.native_package_type }}" = "deb" ]; then
             # Ubuntu/Debian prerequisites
             apt update
@@ -187,7 +187,7 @@ jobs:
           echo "Install Prefix: ${{ env.INSTALL_PREFIX }}"
           echo "=========================================================================="
           echo ""
-          
+
           # Build command for package_full_test.py
           CMD="python3 /tmp/TheRock/build_tools/packaging/linux/package_full_test.py"
           CMD="$CMD --package-type ${{ inputs.native_package_type }}"
@@ -222,7 +222,7 @@ jobs:
             echo "ROCm installation directory not found: ${{ env.INSTALL_PREFIX }}"
             exit 1
           fi
-          
+
           # Check for key ROCm components
           echo ""
           echo "Checking for key ROCm components:"
@@ -233,7 +233,7 @@ jobs:
             "include/hip/hip_runtime.h"
             "lib/libamdhip64.so"
           )
-          
+
           all_found=true
           for comp in "${components[@]}"; do
             full_path="${{ env.INSTALL_PREFIX }}/${comp}"
@@ -244,7 +244,7 @@ jobs:
               all_found=false
             fi
           done
-          
+
           if [ "$all_found" = true ]; then
             echo ""
             echo "All key components found"
@@ -260,7 +260,7 @@ jobs:
           echo "=========================================================================="
           echo "FULL TEST REPORT"
           echo "=========================================================================="
-          
+
           if [ "${{ steps.full-test.outcome }}" = "success" ]; then
             echo "FULL INSTALLATION TEST PASSED"
             echo ""
