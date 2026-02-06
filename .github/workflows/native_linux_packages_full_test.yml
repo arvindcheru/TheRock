@@ -146,7 +146,7 @@ jobs:
         run: |
           echo "Cloning TheRock repository"
           cd /tmp
-          git clone https://github.com/ROCm/TheRock.git
+          git clone https://github.com/arvindcheru/TheRock.git
           cd TheRock
           git checkout ${{ github.ref_name }}
 
