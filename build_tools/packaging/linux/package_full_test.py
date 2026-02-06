@@ -97,7 +97,7 @@ class PackageFullTester:
         print("\nAdding ROCm repository...")
         sources_list = f"/etc/apt/sources.list.d/rocm-test.list"
 
-        repo_entry = f"deb [arch=amd64] {repo_url} ./\n"
+        repo_entry = f"deb [arch=amd64] [trusted=yes] {repo_url} ./\n"
 
         try:
             with open(sources_list, "w") as f:
