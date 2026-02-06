@@ -152,8 +152,13 @@ jobs:
 
       - name: Install Python Dependencies
         run: |
-          pip3 install --break-system-packages pyelftools requests
-
+          if [ "${{ inputs.native_package_type }}" = "deb" ]; then
+            # Ubuntu/Debian: use --break-system-packages flag
+            pip3 install --break-system-packages pyelftools requests
+          else
+            # RHEL/CentOS/AlmaLinux: no --break-system-packages flag needed
+            pip3 install pyelftools requests
+          fi
       - name: Determine Build Date
         id: build-date
         run: |
