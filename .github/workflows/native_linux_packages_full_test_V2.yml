@@ -209,7 +209,7 @@ jobs:
             ARTIFACT_ID="dummy"
           fi
           
-          CMD="python3 ${{ github.workspace }}/build_tools/packaging/linux/package_full_test_V2.py"
+          CMD="python3 build_tools/packaging/linux/package_full_test_V2.py"
           CMD="$CMD --package-type ${{ inputs.native_package_type }}"
           CMD="$CMD --repo-base-url ${{ env.REPO_BASE_URL }}"
           CMD="$CMD --artifact-id $ARTIFACT_ID"
