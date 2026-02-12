@@ -3,8 +3,8 @@ name: Full Test of Native Linux Packages
 on:
   workflow_call:
     inputs:
-      artifact_run_id:
-        description: "workflow run id with build date prefix (e.g., 20260204-21658678136). Format: build_date-artifact_run_id"
+      artifact_run_label:
+        description: "workflow run label with build date prefix (e.g., 20260204-21658678136). Format: build_date-artifact_run_id"
         required: true
         type: string
       rocm_version:
@@ -15,6 +15,7 @@ on:
         description: Specify whether debian or rpm packages are needed (deb or rpm).
         required: true
         type: string
+        default: "deb"
       os_profile:
         description: OS profile (e.g., ubuntu2404, rhel8, debian12, sles16).
         required: true
@@ -22,17 +23,16 @@ on:
       gfx_arch:
         description: GPU architecture (e.g., gfx94x, gfx110x, gfx1151).
         type: string
-        default: gfx94x
       release_type:
-        description: The type of release to test ("nightly" or "prerelease"). All developer-triggered jobs should use "nightly"!
+        description: The type of release to test ("nightly" or "prerelease").
         required: true
         type: string
-        default: nightly
+        default: "nightly"
       install_prefix:
         description: Installation prefix path (optional, defaults to /opt/rocm/core).
         required: false
         type: string
-        default: /opt/rocm/core
+        default: "/opt/rocm/core"
   workflow_dispatch:
     inputs:
       artifact_run_id:
@@ -48,8 +48,8 @@ on:
         required: true
         type: choice
         options:
-          - rpm
           - deb
+          - rpm
         default: "deb"
       os_profile:
         description: OS profile (e.g., ubuntu2404, rhel8, debian12, sles16).
@@ -76,9 +76,9 @@ on:
           - prerelease
         default: "nightly"
       install_prefix:
-        description: Installation prefix path (defaults to /opt/rocm).
+        description: Installation prefix path (defaults to /opt/rocm/core).
         type: string
-        default: "/opt/rocm"
+        default: "/opt/rocm/core"
         required: false
   push:
     branches:
@@ -212,8 +212,6 @@ jobs:
           CMD="python3 build_tools/packaging/linux/package_full_test_V2.py"
           CMD="$CMD --package-type ${{ inputs.native_package_type }}"
           CMD="$CMD --repo-base-url ${{ env.REPO_BASE_URL }}"
-          CMD="$CMD --artifact-id $ARTIFACT_ID"
-          CMD="$CMD --date $BUILD_DATE"
           CMD="$CMD --rocm-version ${{ inputs.rocm_version }}"
           CMD="$CMD --os-profile ${{ inputs.os_profile }}"
           CMD="$CMD --gfx-arch ${{ env.GFX_ARCH }}"

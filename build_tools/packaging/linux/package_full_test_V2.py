@@ -28,12 +28,11 @@ class PackageFullTesterV2:
         self,
         package_type: str,
         repo_base_url: str,
-        artifact_id: str,
+        artifact_run_label: Optional[str],
         rocm_version: str,
         os_profile: str,
-        date: str,
         release_type: str = "nightly",
-        install_prefix: str = "/opt/rocm",
+        install_prefix: str = "/opt/rocm/core",
         gfx_arch: Optional[str] = None,
     ):
         """Initialize the package full tester.
@@ -41,20 +40,18 @@ class PackageFullTesterV2:
         Args:
             package_type: Type of package ('deb' or 'rpm')
             repo_base_url: Base URL for repository
-            artifact_id: Artifact run ID (required for nightly, optional for prerelease)
+            artifact_run_label: Artifact run Label (required for nightly, optional for prerelease)
             rocm_version: ROCm version
             os_profile: OS profile (e.g., ubuntu2404, rhel8)
-            date: Build date in YYYYMMDD format (required for nightly builds)
             release_type: Type of release ('nightly' or 'prerelease')
             install_prefix: Installation prefix (default: /opt/rocm)
             gfx_arch: GPU architecture (default: gfx94x)
         """
         self.package_type = package_type.lower()
         self.repo_base_url = repo_base_url.rstrip("/")
-        self.artifact_id = artifact_id
+        self.artifact_run_label = artifact_id
         self.rocm_version = rocm_version
         self.os_profile = os_profile
-        self.date = date
         self.release_type = release_type.lower()
         self.install_prefix = install_prefix
         self.gfx_arch = gfx_arch.lower() if gfx_arch else "gfx94x"
@@ -71,12 +68,8 @@ class PackageFullTesterV2:
             )
 
         if self.release_type == "nightly":
-            if not self.date or len(self.date) != 8:
-                raise ValueError(
-                    f"Invalid date format: {date}. Must be YYYYMMDD (e.g., 20260204)"
-                )
             # Construct repository URL for nightly builds: base_url/{deb|rpm}/YYYYMMDD-RUNID/
-            self.repo_url = f"{self.repo_base_url}/{self.package_type}/{self.date}-{self.artifact_id}/"
+            self.repo_url = f"{self.repo_base_url}/{self.package_type}/{self.artifact_run_label}/"
         else:  # prerelease
             # For prerelease, repo_base_url should already include /packages
             # Construct repository URL for prerelease builds
@@ -685,8 +678,7 @@ gpgcheck=0
         print(f"Release Type: {self.release_type.upper()}")
         print(f"Repository Base URL: {self.repo_base_url}")
         if self.release_type == "nightly":
-            print(f"Artifact ID: {self.artifact_id}")
-            print(f"Build Date: {self.date}")
+            print(f"Artifact RUN Label: {self.artifact_run_label}")
         print(f"ROCm Version: {self.rocm_version}")
         print(f"OS Profile: {self.os_profile}")
         print(f"GPU Architecture: {self.gfx_arch}")
@@ -747,7 +739,7 @@ Examples:
   python package_full_test_V2.py \\
       --package-type deb \\
       --repo-base-url https://rocm.nightlies.amd.com \\
-      --artifact-id 21658678136 \\
+      --artifact-run-label 20260204-21658678136 \\
       --date 20260204 \\
       --rocm-version 8.0.0 \\
       --os-profile ubuntu2404 \\
@@ -758,8 +750,7 @@ Examples:
   python package_full_test_V2.py \\
       --package-type deb \\
       --repo-base-url https://rocm.prereleases.amd.com/packages \\
-      --artifact-id dummy \\
-      --date 20260204 \\
+      --artifact-run-label 20260204-21658678136 \\
       --rocm-version 8.0.0 \\
       --os-profile ubuntu2404 \\
       --gfx-arch gfx94x \\
@@ -769,8 +760,7 @@ Examples:
   python package_full_test_V2.py \\
       --package-type rpm \\
       --repo-base-url https://rocm.nightlies.amd.com \\
-      --artifact-id 21658678136 \\
-      --date 20260204 \\
+      --artifact-run-label 20260204-21658678136 \\
       --rocm-version 8.0.0 \\
       --os-profile rhel8 \\
       --gfx-arch gfx94x \\
@@ -780,8 +770,7 @@ Examples:
   python package_full_test_V2.py \\
       --package-type rpm \\
       --repo-base-url https://rocm.prereleases.amd.com/packages \\
-      --artifact-id dummy \\
-      --date 20260204 \\
+      --artifact-run-label 20260204-21658678136 \\
       --rocm-version 8.0.0 \\
       --os-profile rhel8 \\
       --gfx-arch gfx94x \\
@@ -805,10 +794,10 @@ Examples:
     )
 
     parser.add_argument(
-        "--artifact-id",
+        "--artifact-run-label",
         type=str,
         required=True,
-        help="Artifact run ID (required for nightly, can be 'dummy' for prerelease)",
+        help="Artifact run Label (required for nightly, can be 'dummy' for prerelease)",
     )
 
     parser.add_argument(
@@ -840,13 +829,6 @@ Examples:
     )
 
     parser.add_argument(
-        "--date",
-        type=str,
-        required=True,
-        help="Build date in YYYYMMDD format (required, e.g., 20260204)",
-    )
-
-    parser.add_argument(
         "--release-type",
         type=str,
         required=True,
@@ -869,12 +851,6 @@ Examples:
     if not args.date or not args.date.strip():
         parser.error("Build date cannot be empty")
 
-    if args.release_type == "nightly":
-        if len(args.date) != 8 or not args.date.isdigit():
-            parser.error(
-                f"Invalid date format: {args.date}. Must be YYYYMMDD (e.g., 20260204)"
-            )
-
     # Print configuration
     print("\n" + "=" * 80)
     print("CONFIGURATION")
@@ -882,8 +858,7 @@ Examples:
     print(f"Package Type: {args.package_type}")
     print(f"Release Type: {args.release_type}")
     print(f"Repository Base URL: {args.repo_base_url}")
-    print(f"Artifact ID: {args.artifact_id}")
-    print(f"Build Date: {args.date}")
+    print(f"Artifact RUN LABEL: {args.artifact_run_label}")
     print(f"ROCm Version: {args.rocm_version}")
     print(f"OS Profile: {args.os_profile}")
     print(f"GPU Architecture: {args.gfx_arch}")
@@ -894,10 +869,9 @@ Examples:
     tester = PackageFullTesterV2(
         package_type=args.package_type,
         repo_base_url=args.repo_base_url,
-        artifact_id=args.artifact_id,
+        artifact_run_label=args.artifact_run_label,
         rocm_version=args.rocm_version,
         os_profile=args.os_profile,
-        date=args.date,
         release_type=args.release_type,
         install_prefix=args.install_prefix,
         gfx_arch=args.gfx_arch,
