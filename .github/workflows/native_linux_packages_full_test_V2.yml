@@ -35,8 +35,8 @@ on:
         default: "/opt/rocm/core"
   workflow_dispatch:
     inputs:
-      artifact_run_id:
-        description: "workflow run ID with build date prefix (e.g., 20260204-21658678136). Format: build_date-artifact_run_id"
+      artifact_run_label:
+        description: "workflow run Label with build date prefix (e.g., 20260204-21658678136). Format: build_date-artifact_run_id"
         required: true
         type: string
       rocm_version:
@@ -119,7 +119,7 @@ jobs:
       image: ${{ inputs.native_package_type == 'deb' && 'ubuntu:24.04' || 'almalinux:9' }}
       options: --privileged
     env:
-      ARTIFACT_RUN_ID: ${{ inputs.artifact_run_id }}
+      ARTIFACT_RUN_LABEL: ${{ inputs.artifact_run_label }}
       ROCM_VERSION: ${{ inputs.rocm_version }}
       OS_PROFILE: ${{ inputs.os_profile }}
       PACKAGE_TYPE: ${{ inputs.native_package_type }}
@@ -188,7 +188,7 @@ jobs:
           echo "=========================================================================="
           echo "Package Type: ${{ inputs.native_package_type }}"
           echo "OS Profile: ${{ inputs.os_profile }}"
-          echo "Artifact Run ID: ${{ inputs.artifact_run_id }}"
+          echo "Artifact Run ID: ${{ inputs.artifact_run_label }}"
           echo "Release Type: ${{ env.RELEASE_TYPE }}"
           echo "ROCm Version: ${{ inputs.rocm_version }}"
           echo "GPU Architecture: ${{ env.GFX_ARCH }}"
@@ -197,20 +197,17 @@ jobs:
           echo "=========================================================================="
           echo ""
 
-          # Build command for package_full_test_V2.py
-          # artifact_run_id format: build_date-artifact_run_id (e.g., 20260204-21658678136)
-          COMBINED_ID="${{ inputs.artifact_run_id }}"
-          BUILD_DATE=$(echo "$COMBINED_ID" | cut -d'-' -f1)
-          ARTIFACT_ID=$(echo "$COMBINED_ID" | cut -d'-' -f2-)
+          # artifact_run_label format: build_date-artifact_run_id (e.g., 20260204-21658678136)
+          ARTIFACT_RUN_LABEL="${{ inputs.artifact_run_label }}"
 
-          # For prerelease, artifact_id might not be needed, but script requires it
-          # Use the extracted artifact_id or use "dummy" if empty
-          if [ -z "$ARTIFACT_ID" ] && [ "${{ env.RELEASE_TYPE }}" = "prerelease" ]; then
-            ARTIFACT_ID="dummy"
+          # For prerelease, artifact_run_label might not be needed, but script requires it
+          if [ -z "$ARTIFACT_RUN_LABEL" ] && [ "${{ env.RELEASE_TYPE }}" = "prerelease" ]; then
+            ARTIFACT_RUN_LABEL="dummy"
           fi
 
           CMD="python3 build_tools/packaging/linux/package_full_test_V2.py"
           CMD="$CMD --package-type ${{ inputs.native_package_type }}"
+          CMD="$CMD --artifact-run-label ${{ inputs.artifact_run_label }}"
           CMD="$CMD --repo-base-url ${{ env.REPO_BASE_URL }}"
           CMD="$CMD --rocm-version ${{ inputs.rocm_version }}"
           CMD="$CMD --os-profile ${{ inputs.os_profile }}"
@@ -294,7 +291,7 @@ jobs:
             if [ "${{ env.RELEASE_TYPE }}" = "prerelease" ]; then
               echo "Installed from: ${{ env.REPO_BASE_URL }}/${{ inputs.os_profile }}/"
             else
-              echo "Installed from: ${{ env.REPO_BASE_URL }}/${{ inputs.native_package_type }}/${{ inputs.artifact_run_id }}/${{ inputs.os_profile }}/"
+              echo "Installed from: ${{ env.REPO_BASE_URL }}/${{ inputs.native_package_type }}/${{ inputs.artifact_run_label }}/${{ inputs.os_profile }}/"
             fi
           else
             echo "FULL INSTALLATION TEST FAILED"
