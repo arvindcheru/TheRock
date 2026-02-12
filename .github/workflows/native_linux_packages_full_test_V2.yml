@@ -202,13 +202,13 @@ jobs:
           COMBINED_ID="${{ inputs.artifact_run_id }}"
           BUILD_DATE=$(echo "$COMBINED_ID" | cut -d'-' -f1)
           ARTIFACT_ID=$(echo "$COMBINED_ID" | cut -d'-' -f2-)
-          
+
           # For prerelease, artifact_id might not be needed, but script requires it
           # Use the extracted artifact_id or use "dummy" if empty
           if [ -z "$ARTIFACT_ID" ] && [ "${{ env.RELEASE_TYPE }}" = "prerelease" ]; then
             ARTIFACT_ID="dummy"
           fi
-          
+
           CMD="python3 build_tools/packaging/linux/package_full_test_V2.py"
           CMD="$CMD --package-type ${{ inputs.native_package_type }}"
           CMD="$CMD --repo-base-url ${{ env.REPO_BASE_URL }}"
@@ -306,5 +306,3 @@ jobs:
             exit 1
           fi
           echo "=========================================================================="
-
-

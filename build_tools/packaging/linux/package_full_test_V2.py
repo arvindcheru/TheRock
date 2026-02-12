@@ -76,9 +76,7 @@ class PackageFullTesterV2:
                     f"Invalid date format: {date}. Must be YYYYMMDD (e.g., 20260204)"
                 )
             # Construct repository URL for nightly builds: base_url/{deb|rpm}/YYYYMMDD-RUNID/
-            self.repo_url = (
-                f"{self.repo_base_url}/{self.package_type}/{self.date}-{self.artifact_id}/"
-            )
+            self.repo_url = f"{self.repo_base_url}/{self.package_type}/{self.date}-{self.artifact_id}/"
         else:  # prerelease
             # For prerelease, repo_base_url should already include /packages
             # Construct repository URL for prerelease builds
@@ -149,7 +147,9 @@ class PackageFullTesterV2:
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                 )
-                stdout, stderr = dearmor_process.communicate(input=result.stdout, timeout=30)
+                stdout, stderr = dearmor_process.communicate(
+                    input=result.stdout, timeout=30
+                )
 
                 if dearmor_process.returncode != 0:
                     print(f"[FAIL] Failed to dearmor GPG key: {stderr.decode()}")
@@ -201,7 +201,9 @@ class PackageFullTesterV2:
         if self.release_type == "prerelease":
             # Prerelease: use GPG key
             keyring_file = "/etc/apt/keyrings/rocm.gpg"
-            repo_entry = f"deb [arch=amd64 signed-by={keyring_file}] {repo_url} stable main\n"
+            repo_entry = (
+                f"deb [arch=amd64 signed-by={keyring_file}] {repo_url} stable main\n"
+            )
         else:
             # Nightly: trusted=yes (no GPG check)
             repo_entry = f"deb [arch=amd64 trusted=yes] {repo_url} stable main\n"
@@ -729,6 +731,7 @@ gpgcheck=0
         except Exception as e:
             print(f"\n[FAIL] Error during full installation test: {e}")
             import traceback
+
             traceback.print_exc()
             return False
 
@@ -906,5 +909,3 @@ Examples:
 
 if __name__ == "__main__":
     main()
-
-

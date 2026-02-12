@@ -612,8 +612,10 @@ gpgcheck=0
         except Exception as e:
             print(f"\n[FAIL] Error during full installation test: {e}")
             import traceback
+
             traceback.print_exc()
             return False
+
 
 def main():
     """Main entry point for the script."""
