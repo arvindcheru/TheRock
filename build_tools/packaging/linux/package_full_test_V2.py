@@ -49,7 +49,7 @@ class PackageFullTesterV2:
         """
         self.package_type = package_type.lower()
         self.repo_base_url = repo_base_url.rstrip("/")
-        self.artifact_run_label = artifact_id
+        self.artifact_run_label = artifact_run_label
         self.rocm_version = rocm_version
         self.os_profile = os_profile
         self.release_type = release_type.lower()
@@ -69,7 +69,9 @@ class PackageFullTesterV2:
 
         if self.release_type == "nightly":
             # Construct repository URL for nightly builds: base_url/{deb|rpm}/YYYYMMDD-RUNID/
-            self.repo_url = f"{self.repo_base_url}/{self.package_type}/{self.artifact_run_label}/"
+            self.repo_url = (
+                f"{self.repo_base_url}/{self.package_type}/{self.artifact_run_label}/"
+            )
         else:  # prerelease
             # For prerelease, repo_base_url should already include /packages
             # Construct repository URL for prerelease builds
@@ -740,7 +742,6 @@ Examples:
       --package-type deb \\
       --repo-base-url https://rocm.nightlies.amd.com \\
       --artifact-run-label 20260204-21658678136 \\
-      --date 20260204 \\
       --rocm-version 8.0.0 \\
       --os-profile ubuntu2404 \\
       --gfx-arch gfx94x \\
@@ -787,20 +788,6 @@ Examples:
     )
 
     parser.add_argument(
-        "--repo-base-url",
-        type=str,
-        required=True,
-        help="Base URL for repository (e.g., https://rocm.nightlies.amd.com or https://rocm.prereleases.amd.com/packages)",
-    )
-
-    parser.add_argument(
-        "--artifact-run-label",
-        type=str,
-        required=True,
-        help="Artifact run Label (required for nightly, can be 'dummy' for prerelease)",
-    )
-
-    parser.add_argument(
         "--rocm-version",
         type=str,
         required=True,
@@ -815,10 +802,11 @@ Examples:
     )
 
     parser.add_argument(
-        "--gfx-arch",
+        "--release-type",
         type=str,
-        default="gfx94x",
-        help="GPU architecture (default: gfx94x). Examples: gfx94x, gfx110x, gfx1151",
+        required=True,
+        choices=["nightly", "prerelease"],
+        help="Type of release: 'nightly' or 'prerelease'",
     )
 
     parser.add_argument(
@@ -829,27 +817,39 @@ Examples:
     )
 
     parser.add_argument(
-        "--release-type",
+        "--repo-base-url",
         type=str,
         required=True,
-        choices=["nightly", "prerelease"],
-        help="Type of release: 'nightly' or 'prerelease'",
+        help="Base URL for repository (e.g., https://rocm.nightlies.amd.com or https://rocm.prereleases.amd.com/packages)",
+    )
+
+    parser.add_argument(
+        "--gfx-arch",
+        type=str,
+        default="gfx94x",
+        help="GPU architecture (default: gfx94x). Examples: gfx94x, gfx110x, gfx1151",
+    )
+
+    parser.add_argument(
+        "--artifact-run-label",
+        type=str,
+        help="Artifact run Label (required for nightly, can be 'dummy' for prerelease)",
     )
 
     args = parser.parse_args()
 
     # Validate and normalize parameters
-    if not args.artifact_id or not args.artifact_id.strip():
-        parser.error("Artifact ID cannot be empty")
+    if not args.release_type or not args.release_type.strip():
+        parser.error("Release Type cannot be empty")
+
+    if not args.package_type or not args.package_type.strip():
+        parser.error("Package Type cannot be empty")
 
     if not args.rocm_version or not args.rocm_version.strip():
         parser.error("ROCm version cannot be empty")
 
     if not args.os_profile or not args.os_profile.strip():
         parser.error("OS profile cannot be empty")
-
-    if not args.date or not args.date.strip():
-        parser.error("Build date cannot be empty")
 
     # Print configuration
     print("\n" + "=" * 80)
