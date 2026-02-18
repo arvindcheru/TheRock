@@ -26,11 +26,11 @@ class PackageFullTesterV2:
 
     def __init__(
         self,
-        package_type: str,
+        package_type: str = "deb",
         repo_base_url: str,
         repo_sub_folder: Optional[str],
-        rocm_version: str,
-        os_profile: str,
+        rocm_version: str = "8.0.0",
+        os_profile: str = "ubuntu2404",
         release_type: str = "nightly",
         install_prefix: str = "/opt/rocm/core",
         gfx_arch: Optional[str] = None,
@@ -44,7 +44,7 @@ class PackageFullTesterV2:
             rocm_version: ROCm version
             os_profile: OS profile (e.g., ubuntu2404, rhel8)
             release_type: Type of release ('nightly' or 'prerelease')
-            install_prefix: Installation prefix (default: /opt/rocm)
+            install_prefix: Installation prefix (default: /opt/rocm/core)
             gfx_arch: GPU architecture (default: gfx94x)
         """
         self.package_type = package_type.lower()

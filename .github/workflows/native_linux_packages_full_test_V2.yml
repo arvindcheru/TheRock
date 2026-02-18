@@ -114,10 +114,10 @@ jobs:
       image: ${{ inputs.native_package_type == 'deb' && 'ubuntu:24.04' || 'almalinux:9' }}
       options: --privileged
     env:
-      REPO_SUB_FOLDER: ${{ inputs.repo_sub_folder || '20260204-21658678136' }}
-      ROCM_VERSION: ${{ inputs.rocm_version || '8.0.0' }}
-      OS_PROFILE: ${{ inputs.os_profile || 'ubuntu2404' }}
-      PACKAGE_TYPE: ${{ inputs.native_package_type || 'deb' }}
+      REPO_SUB_FOLDER: ${{ inputs.repo_sub_folder }}
+      ROCM_VERSION: ${{ inputs.rocm_version }}
+      OS_PROFILE: ${{ inputs.os_profile }}
+      PACKAGE_TYPE: ${{ inputs.native_package_type }}
       GFX_ARCH: ${{ inputs.gfx_arch || 'gfx94x' }}
       RELEASE_TYPE: ${{ inputs.release_type || 'nightly' }}
       INSTALL_PREFIX: ${{ inputs.install_prefix || '/opt/rocm/core' }}
@@ -158,9 +158,11 @@ jobs:
           if [ "${{ inputs.native_package_type }}" = "deb" ]; then
             # Ubuntu/Debian: use --break-system-packages flag
             pip3 install --break-system-packages pyelftools requests
+            pip3 install --break-system-packages prettytable PyYAML
           else
             # RHEL/CentOS/AlmaLinux: no --break-system-packages flag needed
             pip3 install pyelftools requests
+            pip3 install prettytable PyYAML
           fi
 
       - name: Set Repository Base URL
