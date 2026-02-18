@@ -14,7 +14,6 @@ on:
         description: Specify whether debian or rpm packages are needed (deb or rpm).
         required: true
         type: string
-        default: "deb"
       os_profile:
         description: OS profile (e.g., ubuntu2404, rhel8, debian12, sles16).
         required: true
@@ -26,7 +25,6 @@ on:
         description: The type of release to test ("nightly" or "prerelease").
         required: true
         type: string
-        default: "nightly"
       install_prefix:
         description: Installation prefix path (optional, defaults to /opt/rocm/core).
         required: false
@@ -48,7 +46,6 @@ on:
         options:
           - deb
           - rpm
-        default: "deb"
       os_profile:
         description: OS profile (e.g., ubuntu2404, rhel8, debian12, sles16).
         required: true
@@ -60,7 +57,6 @@ on:
           - rhel8
           - rhel9
           - sles16
-        default: "ubuntu2404"
       gfx_arch:
         description: GPU architecture (e.g., gfx94x, gfx110x, gfx1151).
         type: string
@@ -72,7 +68,6 @@ on:
         options:
           - nightly
           - prerelease
-        default: "nightly"
       install_prefix:
         description: Installation prefix path (defaults to /opt/rocm/core).
         type: string
