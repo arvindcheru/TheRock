@@ -314,24 +314,14 @@ class NativeLinuxPackagesTester:
 
         # Add repository using zypper
         print(f"\nAdding ROCm repository using zypper...")
-        # For nightly builds, disable GPG checks; for prerelease, GPG key will be handled separately
-        if self.release_type == "nightly":
-            zypper_cmd = [
-                "zypper",
-                "--non-interactive",
-                "--no-gpg-checks",
-                "addrepo",
-                self.repo_url,
-                repo_name,
-            ]
-        else:
-            zypper_cmd = [
-                "zypper",
-                "--non-interactive",
-                "addrepo",
-                self.repo_url,
-                repo_name,
-            ]
+        # Always use --non-interactive; GPG checks will be configured after adding the repo
+        zypper_cmd = [
+            "zypper",
+            "--non-interactive",
+            "addrepo",
+            self.repo_url,
+            repo_name,
+        ]
 
         if self.release_type == "prerelease" and self.gpg_key_url:
             # For prerelease, we might need to handle GPG key separately
@@ -357,6 +347,32 @@ class NativeLinuxPackagesTester:
         except subprocess.TimeoutExpired:
             print(f"[FAIL] zypper addrepo timed out")
             return False
+
+        # For nightly builds, modify repository to disable GPG checks
+        if self.release_type == "nightly":
+            print("\nDisabling GPG checks for nightly repository...")
+            try:
+                modify_result = subprocess.run(
+                    [
+                        "zypper",
+                        "--non-interactive",
+                        "modifyrepo",
+                        "--no-gpg-checks",
+                        repo_name,
+                    ],
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    timeout=30,
+                )
+                print("[PASS] GPG checks disabled for repository")
+            except subprocess.CalledProcessError as e:
+                print(
+                    f"[WARN] Failed to disable GPG checks (may not be critical): {e.stdout}"
+                )
+            except subprocess.TimeoutExpired:
+                print(f"[WARN] zypper modifyrepo timed out (may not be critical)")
 
         # Refresh repository metadata
         print("\nRefreshing repository metadata...")
