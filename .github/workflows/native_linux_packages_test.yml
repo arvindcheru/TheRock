@@ -88,8 +88,10 @@ jobs:
     # Use appropriate runner based on package type
     runs-on: ${{ github.repository_owner == 'ROCm' && 'azure-linux-scale-rocm' || 'ubuntu-24.04' }}
     container:
-      # Use container matching the package type
-      image: ${{ inputs.native_package_type == 'deb' && 'ubuntu:24.04' || 'almalinux:9' }}
+      # Use container matching the OS profile
+      # For SLES, use SLES container; for DEB use Ubuntu; for other RPM use AlmaLinux
+      # Note: SLES container images may require specific registry access
+      image: ${{ inputs.os_profile == 'sles16' && 'suse/sles15sp5' || (inputs.native_package_type == 'deb' && 'ubuntu:24.04' || 'almalinux:9') }}
       options: --ipc host
         --group-add video
         --privileged
@@ -119,6 +121,13 @@ jobs:
               lsb-release
           elif [[ "${{ inputs.os_profile }}" == sles* ]]; then
             # SLES prerequisites (uses zypper)
+            # Check if zypper is available
+            if ! command -v zypper &> /dev/null; then
+              echo "[ERROR] zypper command not found. SLES requires a SLES container image."
+              echo "Current container image should be a SLES image (e.g., registry.suse.com/suse/sles16:latest)"
+              echo "OS Profile: ${{ inputs.os_profile }}"
+              exit 1
+            fi
             zypper refresh
             zypper install -y \
               python3 \

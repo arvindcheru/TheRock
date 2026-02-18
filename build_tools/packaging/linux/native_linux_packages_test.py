@@ -603,7 +603,12 @@ gpgcheck=0
             if self.package_type == "deb":
                 cmd = ["dpkg", "-l"]
                 grep_pattern = "rocm"
+            elif self._is_sles():
+                # Use zypper for SLES to list installed packages
+                cmd = ["zypper", "search", "-i", "rocm"]
+                grep_pattern = "rocm"
             else:
+                # Use rpm for other RPM-based systems (RHEL, AlmaLinux, CentOS)
                 cmd = ["rpm", "-qa"]
                 grep_pattern = "rocm"
 
