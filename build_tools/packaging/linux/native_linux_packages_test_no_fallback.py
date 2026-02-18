@@ -292,10 +292,14 @@ class NativeLinuxPackagesTester:
     def _setup_sles_repository(self) -> bool:
         """Setup repository for SLES using zypper.
 
+        Follows the official ROCm documentation approach:
+        https://rocm.docs.amd.com/projects/install-on-linux/en/latest/install/install-methods/package-manager/package-manager-sles.html
+
         Returns:
             True if setup successful, False otherwise
         """
         print("\nUsing zypper for SLES repository setup...")
+        print("Following official ROCm SLES installation documentation")
 
         # Setup GPG key for prerelease
         if self.release_type == "prerelease":
@@ -303,6 +307,7 @@ class NativeLinuxPackagesTester:
                 return False
 
         repo_name = "rocm-test"
+        repo_file = f"/etc/zypp/repos.d/{repo_name}.repo"
 
         # Remove existing repository if it exists
         print(f"\nRemoving existing repository '{repo_name}' if it exists...")
@@ -312,82 +317,41 @@ class NativeLinuxPackagesTester:
             stderr=subprocess.PIPE,
         )  # Ignore errors if repo doesn't exist
 
-        # Add repository using zypper
-        print(f"\nAdding ROCm repository using zypper...")
-        # Always use --non-interactive; GPG checks will be configured after adding the repo
-        zypper_cmd = [
-            "zypper",
-            "--non-interactive",
-            "addrepo",
-            self.repo_url,
-            repo_name,
-        ]
-
+        # Create repository file following official ROCm documentation format
+        print(f"\nCreating ROCm repository file at {repo_file}...")
         if self.release_type == "prerelease" and self.gpg_key_url:
-            # For prerelease, we might need to handle GPG key separately
-            # zypper addrepo doesn't directly support gpgkey parameter
-            # We'll add the repo first, then handle GPG if needed
-            pass
+            # Prerelease: use GPG key (gpgcheck=1)
+            repo_content = f"""[{repo_name}]
+name=ROCm {self.release_type} repository
+baseurl={self.repo_url}
+enabled=1
+gpgcheck=1
+gpgkey={self.gpg_key_url}
+"""
+        else:
+            # Nightly: no GPG check (gpgcheck=0)
+            repo_content = f"""[{repo_name}]
+name=ROCm {self.release_type} repository
+baseurl={self.repo_url}
+enabled=1
+gpgcheck=0
+"""
 
         try:
-            result = subprocess.run(
-                zypper_cmd,
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                timeout=60,
-            )
-            print(f"[PASS] Repository added: {repo_name}")
-            print(f"Repository URL: {self.repo_url}")
-        except subprocess.CalledProcessError as e:
-            print(f"[FAIL] Failed to add repository: {e}")
-            print(f"Error: {e.stdout}")
+            with open(repo_file, "w") as f:
+                f.write(repo_content)
+            print(f"[PASS] Repository file created: {repo_file}")
+            print(f"\nRepository configuration:")
+            print(repo_content)
+        except Exception as e:
+            print(f"[FAIL] Failed to create repository file: {e}")
             return False
-        except subprocess.TimeoutExpired:
-            print(f"[FAIL] zypper addrepo timed out")
-            return False
-
-        # For nightly builds, modify repository to disable GPG checks
-        if self.release_type == "nightly":
-            print("\nDisabling GPG checks for nightly repository...")
-            try:
-                modify_result = subprocess.run(
-                    [
-                        "zypper",
-                        "--non-interactive",
-                        "modifyrepo",
-                        "--no-gpg-checks",
-                        repo_name,
-                    ],
-                    check=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    timeout=30,
-                )
-                print("[PASS] GPG checks disabled for repository")
-            except subprocess.CalledProcessError as e:
-                print(
-                    f"[WARN] Failed to disable GPG checks (may not be critical): {e.stdout}"
-                )
-            except subprocess.TimeoutExpired:
-                print(f"[WARN] zypper modifyrepo timed out (may not be critical)")
 
         # Refresh repository metadata
         print("\nRefreshing repository metadata...")
         try:
-            # For nightly builds, skip GPG checks during refresh
-            if self.release_type == "nightly":
-                refresh_cmd = [
-                    "zypper",
-                    "--non-interactive",
-                    "--no-gpg-checks",
-                    "refresh",
-                    repo_name,
-                ]
-            else:
-                refresh_cmd = ["zypper", "--non-interactive", "refresh", repo_name]
+            # Use --non-interactive to avoid prompts
+            refresh_cmd = ["zypper", "--non-interactive", "refresh", repo_name]
             process = subprocess.Popen(
                 refresh_cmd,
                 stdout=subprocess.PIPE,
