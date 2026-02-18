@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       repo_sub_folder:
-        description: Repository sub folder (e.g., 20260204-21658678136). Format: build_date-artifact_run_id
+        description: "Repository sub folder (e.g., 20260204-21658678136). Format: build_date-artifact_run_id"
         required: true
         type: string
       rocm_version:
@@ -36,7 +36,7 @@ on:
   workflow_dispatch:
     inputs:
       repo_sub_folder:
-        description: Repository Sub Folder (e.g., 20260204-21658678136). Format: build_date-artifact_run_id.
+        description: "Repository Sub Folder (e.g., 20260204-21658678136). Format: build_date-artifact_run_id."
         required: true
         type: string
       rocm_version:
