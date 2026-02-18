@@ -26,14 +26,14 @@ class PackageFullTesterV2:
 
     def __init__(
         self,
+        repo_base_url: str = None,
         package_type: str = "deb",
-        repo_base_url: str,
-        repo_sub_folder: Optional[str],
         rocm_version: str = "8.0.0",
         os_profile: str = "ubuntu2404",
         release_type: str = "nightly",
         install_prefix: str = "/opt/rocm/core",
         gfx_arch: Optional[str] = None,
+        repo_sub_folder: Optional[str] = None,
     ):
         """Initialize the package full tester.
 
