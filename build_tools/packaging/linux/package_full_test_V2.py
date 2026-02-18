@@ -70,7 +70,7 @@ class PackageFullTesterV2:
         if self.release_type == "nightly":
             # Construct repository URL for nightly builds: base_url/{deb|rpm}/YYYYMMDD-RUNID/
             self.repo_url = (
-                f"{self.repo_base_url}/{self.package_type}/{self.artifact_run_label}/"
+                f"{self.repo_base_url}/{self.package_type}/{self.repo_sub_folder}/"
             )
         else:  # prerelease
             # For prerelease, repo_base_url should already include /packages
