@@ -154,9 +154,43 @@ class NativeLinuxPackagesTester:
                 print(f"[FAIL] Error setting up GPG key: {e}")
                 return False
         else:  # rpm
-            # For RPM, GPG key URL is specified in repo file
-            # No need to download separately
-            return True
+            # For RPM (including SLES), import GPG key using rpm --import
+            try:
+                # Download GPG key
+                print(f"\nDownloading GPG key from {self.gpg_key_url}...")
+                result = subprocess.run(
+                    ["wget", "-q", "-O", "-", self.gpg_key_url],
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=30,
+                )
+
+                # Import GPG key using rpm --import
+                print("\nImporting GPG key...")
+                import_process = subprocess.Popen(
+                    ["rpm", "--import", "-"],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+                stdout, stderr = import_process.communicate(
+                    input=result.stdout, timeout=30
+                )
+
+                if import_process.returncode != 0:
+                    print(f"[FAIL] Failed to import GPG key: {stderr.decode()}")
+                    return False
+
+                print("[PASS] GPG key imported successfully")
+                return True
+
+            except subprocess.CalledProcessError as e:
+                print(f"[FAIL] Failed to download GPG key: {e}")
+                return False
+            except Exception as e:
+                print(f"[FAIL] Error setting up GPG key: {e}")
+                return False
 
     def setup_deb_repository(self) -> bool:
         """Setup DEB repository on the system.
@@ -263,19 +297,41 @@ class NativeLinuxPackagesTester:
         """
         print("\nUsing zypper for SLES repository setup...")
 
+        # Setup GPG key for prerelease
+        if self.release_type == "prerelease":
+            if not self.setup_gpg_key():
+                return False
+
         repo_name = "rocm-test"
 
         # Remove existing repository if it exists
         print(f"\nRemoving existing repository '{repo_name}' if it exists...")
         subprocess.run(
-            ["zypper", "removerepo", repo_name],
+            ["zypper", "--non-interactive", "removerepo", repo_name],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )  # Ignore errors if repo doesn't exist
 
         # Add repository using zypper
         print(f"\nAdding ROCm repository using zypper...")
-        zypper_cmd = ["zypper", "addrepo", self.repo_url, repo_name]
+        # For nightly builds, disable GPG checks; for prerelease, GPG key will be handled separately
+        if self.release_type == "nightly":
+            zypper_cmd = [
+                "zypper",
+                "--non-interactive",
+                "--no-gpg-checks",
+                "addrepo",
+                self.repo_url,
+                repo_name,
+            ]
+        else:
+            zypper_cmd = [
+                "zypper",
+                "--non-interactive",
+                "addrepo",
+                self.repo_url,
+                repo_name,
+            ]
 
         if self.release_type == "prerelease" and self.gpg_key_url:
             # For prerelease, we might need to handle GPG key separately
@@ -305,8 +361,19 @@ class NativeLinuxPackagesTester:
         # Refresh repository metadata
         print("\nRefreshing repository metadata...")
         try:
+            # For nightly builds, skip GPG checks during refresh
+            if self.release_type == "nightly":
+                refresh_cmd = [
+                    "zypper",
+                    "--non-interactive",
+                    "--no-gpg-checks",
+                    "refresh",
+                    repo_name,
+                ]
+            else:
+                refresh_cmd = ["zypper", "--non-interactive", "refresh", repo_name]
             process = subprocess.Popen(
-                ["zypper", "refresh", repo_name],
+                refresh_cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -361,7 +428,7 @@ gpgkey={self.gpg_key_url}
 """
         else:
             # Nightly: no GPG check
-            repo_content = f"""[pkg-test]
+            repo_content = f"""[rocm-test]
 name=Native Linux Package Test Repository
 baseurl={self.repo_url}
 enabled=1
@@ -506,7 +573,24 @@ gpgcheck=0
 
         # Use zypper for SLES, dnf for others
         if self._is_sles():
-            cmd = ["zypper", "install", "-y", self.package_name]
+            # For nightly builds, skip GPG checks during installation
+            if self.release_type == "nightly":
+                cmd = [
+                    "zypper",
+                    "--non-interactive",
+                    "--no-gpg-checks",
+                    "install",
+                    "-y",
+                    self.package_name,
+                ]
+            else:
+                cmd = [
+                    "zypper",
+                    "--non-interactive",
+                    "install",
+                    "-y",
+                    self.package_name,
+                ]
             print("[INFO] Using zypper for SLES package installation")
         else:
             cmd = ["dnf", "install", "-y", self.package_name]
@@ -604,7 +688,7 @@ gpgcheck=0
                 grep_pattern = "rocm"
             elif self._is_sles():
                 # Use zypper for SLES to list installed packages
-                cmd = ["zypper", "search", "-i", "rocm"]
+                cmd = ["zypper", "--non-interactive", "search", "-i", "rocm"]
                 grep_pattern = "rocm"
             else:
                 # Use rpm for other RPM-based systems (RHEL, AlmaLinux, CentOS)
