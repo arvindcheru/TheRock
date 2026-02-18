@@ -106,11 +106,13 @@ jobs:
       fail-fast: false
     # Use appropriate runner based on package type
     runs-on: ${{ github.repository_owner == 'ROCm' && 'azure-linux-scale-rocm' || 'ubuntu-24.04' }}
-    #runs-on: ${{ inputs.native_package_type == 'deb' && 'ubuntu-24.04' || 'ubuntu-24.04' }}
     container:
       # Use container matching the package type
       image: ${{ inputs.native_package_type == 'deb' && 'ubuntu:24.04' || 'almalinux:9' }}
-      options: --privileged
+      options: --ipc host
+        --group-add video
+        --device /dev/kfd
+        --device /dev/dri
     env:
       REPO_SUB_FOLDER: ${{ inputs.repo_sub_folder }}
       ROCM_VERSION: ${{ inputs.rocm_version }}
