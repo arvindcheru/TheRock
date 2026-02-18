@@ -73,20 +73,6 @@ on:
         type: string
         default: "/opt/rocm/core"
         required: false
-  push:
-    branches:
-      - main
-      - develop
-    paths:
-      - '.github/workflows/native_linux_packages_test.yml'
-      - 'build_tools/**'
-  pull_request:
-    branches:
-      - main
-      - develop
-    paths:
-      - '.github/workflows/native_linux_packages_test.yml'
-      - 'build_tools/**'
 
 permissions:
   id-token: write
@@ -131,6 +117,17 @@ jobs:
               ca-certificates \
               git \
               lsb-release
+          elif [[ "${{ inputs.os_profile }}" == sles* ]]; then
+            # SLES prerequisites (uses zypper)
+            zypper refresh
+            zypper install -y \
+              python3 \
+              python3-pip \
+              wget \
+              curl \
+              ca-certificates \
+              git \
+              lsb-release
           else
             # RHEL/CentOS/AlmaLinux prerequisites
             # Use --allowerasing to handle curl-minimal conflict on AlmaLinux 9
@@ -159,9 +156,70 @@ jobs:
             pip3 install prettytable PyYAML
           fi
 
+      - name: Validate Package Type and OS Profile
+        run: |
+          echo "=========================================================================="
+          echo "VALIDATING PACKAGE TYPE AND OS PROFILE"
+          echo "=========================================================================="
+          echo "OS Profile: ${{ inputs.os_profile }}"
+          echo "Provided Package Type: ${{ inputs.native_package_type }}"
+          echo ""
+
+          # Derive expected package type from OS profile
+          OS_PROFILE_LOWER=$(echo "${{ inputs.os_profile }}" | tr '[:upper:]' '[:lower:]')
+          EXPECTED_PACKAGE_TYPE=""
+
+          case "$OS_PROFILE_LOWER" in
+            ubuntu*|debian*)
+              EXPECTED_PACKAGE_TYPE="deb"
+              ;;
+            rhel*|sles*|almalinux*|centos*)
+              EXPECTED_PACKAGE_TYPE="rpm"
+              ;;
+            *)
+              echo "[ERROR] Unable to derive package type from OS profile: ${{ inputs.os_profile }}"
+              echo "Supported OS profiles: ubuntu*, debian*, rhel*, sles*, almalinux*, centos*"
+              exit 1
+              ;;
+          esac
+
+          echo "Expected Package Type (derived from OS profile): $EXPECTED_PACKAGE_TYPE"
+          echo ""
+
+          # Validate that provided package type matches expected
+          if [ "${{ inputs.native_package_type }}" != "$EXPECTED_PACKAGE_TYPE" ]; then
+            echo "[ERROR] Package type mismatch!"
+            echo "  OS Profile: ${{ inputs.os_profile }}"
+            echo "  Expected Package Type: $EXPECTED_PACKAGE_TYPE"
+            echo "  Provided Package Type: ${{ inputs.native_package_type }}"
+            echo ""
+            echo "The package type must match the OS profile:"
+            echo "  - ubuntu*/debian* → deb"
+            echo "  - rhel*/sles*/almalinux*/centos* → rpm"
+            exit 1
+          fi
+
+          echo "[PASS] Package type validation successful"
+          echo "  OS Profile: ${{ inputs.os_profile }}"
+          echo "  Package Type: ${{ inputs.native_package_type }}"
+          echo "=========================================================================="
+
       - name: Construct Repository URL and Package Name
         id: construct-urls
         run: |
+          # Validate repo_sub_folder for nightly builds
+          if [ "${{ env.RELEASE_TYPE }}" = "nightly" ]; then
+            if [ -z "${{ inputs.repo_sub_folder }}" ] || [ "${{ inputs.repo_sub_folder }}" = "" ]; then
+              echo "[ERROR] repo_sub_folder is required for nightly builds"
+              echo "  Release Type: ${{ env.RELEASE_TYPE }}"
+              echo "  Repository Sub Folder: ${{ inputs.repo_sub_folder }}"
+              echo ""
+              echo "For nightly builds, you must provide repo_sub_folder in the format: YYYYMMDD-RUNID"
+              echo "Example: 20260204-21658678136"
+              exit 1
+            fi
+          fi
+
           # Set base URL based on release type
           if [ "${{ env.RELEASE_TYPE }}" = "prerelease" ]; then
             REPO_BASE_URL="https://rocm.prereleases.amd.com/packages"
@@ -170,14 +228,16 @@ jobs:
           fi
 
           # Construct full repository URL based on release type and package type
+          # Note: For nightly RPM, the URL structure is base_url/rpm/YYYYMMDD-RUNID/x86_64/
+          # (os_profile is not included in the nightly RPM URL path)
           if [ "${{ env.RELEASE_TYPE }}" = "nightly" ]; then
             # Nightly builds
             if [ "${{ inputs.native_package_type }}" = "deb" ]; then
               # Nightly DEB: base_url/deb/YYYYMMDD-RUNID/
               REPO_URL="${REPO_BASE_URL}/${{ inputs.native_package_type }}/${{ inputs.repo_sub_folder }}/"
             else
-              # Nightly RPM: base_url/rpm/YYYYMMDD-RUNID/os_profile/x86_64/
-              REPO_URL="${REPO_BASE_URL}/${{ inputs.native_package_type }}/${{ inputs.repo_sub_folder }}/${{ inputs.os_profile }}/x86_64/"
+              # Nightly RPM: base_url/rpm/YYYYMMDD-RUNID/x86_64/
+              REPO_URL="${REPO_BASE_URL}/${{ inputs.native_package_type }}/${{ inputs.repo_sub_folder }}/x86_64/"
             fi
           else
             # Prerelease builds

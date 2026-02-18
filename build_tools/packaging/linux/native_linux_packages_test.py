@@ -45,6 +45,14 @@ class NativeLinuxPackagesTester:
                 "Supported profiles: ubuntu*, debian*, rhel*, sles*, almalinux*, centos*"
             )
 
+    def _is_sles(self) -> bool:
+        """Check if the OS profile is SLES (SUSE Linux Enterprise Server).
+
+        Returns:
+            True if SLES, False otherwise
+        """
+        return self.os_profile.lower().startswith("sles")
+
     def __init__(
         self,
         repo_url: str,
@@ -241,6 +249,104 @@ class NativeLinuxPackagesTester:
 
         print(f"\nRepository URL: {self.repo_url}")
         print(f"Release Type: {self.release_type}")
+        print(f"OS Profile: {self.os_profile}")
+
+        # SLES uses zypper, others use dnf/yum
+        if self._is_sles():
+            return self._setup_sles_repository()
+        else:
+            return self._setup_dnf_repository()
+
+    def _setup_sles_repository(self) -> bool:
+        """Setup repository for SLES using zypper.
+
+        Returns:
+            True if setup successful, False otherwise
+        """
+        print("\nUsing zypper for SLES repository setup...")
+
+        repo_name = "rocm-test"
+
+        # Remove existing repository if it exists
+        print(f"\nRemoving existing repository '{repo_name}' if it exists...")
+        subprocess.run(
+            ["zypper", "removerepo", repo_name],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )  # Ignore errors if repo doesn't exist
+
+        # Add repository using zypper
+        print(f"\nAdding ROCm repository using zypper...")
+        zypper_cmd = ["zypper", "addrepo", self.repo_url, repo_name]
+
+        if self.release_type == "prerelease" and self.gpg_key_url:
+            # For prerelease, we might need to handle GPG key separately
+            # zypper addrepo doesn't directly support gpgkey parameter
+            # We'll add the repo first, then handle GPG if needed
+            pass
+
+        try:
+            result = subprocess.run(
+                zypper_cmd,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=60,
+            )
+            print(f"[PASS] Repository added: {repo_name}")
+            print(f"Repository URL: {self.repo_url}")
+        except subprocess.CalledProcessError as e:
+            print(f"[FAIL] Failed to add repository: {e}")
+            print(f"Error: {e.stdout}")
+            return False
+        except subprocess.TimeoutExpired:
+            print(f"[FAIL] zypper addrepo timed out")
+            return False
+
+        # Refresh repository metadata
+        print("\nRefreshing repository metadata...")
+        try:
+            process = subprocess.Popen(
+                ["zypper", "refresh", repo_name],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,  # Line buffered
+            )
+
+            # Stream output line by line
+            for line in process.stdout:
+                line = line.rstrip()
+                print(line)  # Print immediately
+                sys.stdout.flush()  # Ensure immediate display
+
+            # Wait for process to complete
+            return_code = process.wait(timeout=120)
+
+            if return_code == 0:
+                print("\n[PASS] Repository metadata refreshed")
+                return True
+            else:
+                print(
+                    f"\n[FAIL] Failed to refresh repository metadata (exit code: {return_code})"
+                )
+                return False
+        except subprocess.TimeoutExpired:
+            process.kill()
+            print(f"\n[FAIL] zypper refresh timed out")
+            return False
+        except Exception as e:
+            print(f"[FAIL] Error refreshing repository metadata: {e}")
+            return False
+
+    def _setup_dnf_repository(self) -> bool:
+        """Setup repository for RHEL/AlmaLinux/CentOS using dnf/yum.
+
+        Returns:
+            True if setup successful, False otherwise
+        """
+        print("\nUsing dnf/yum for repository setup...")
 
         # Create repository file
         print("\nCreating ROCm repository file...")
@@ -286,13 +392,47 @@ gpgcheck=0
                 timeout=60,
             )
             print("[PASS] dnf cache cleaned")
-            return True
         except subprocess.CalledProcessError as e:
-            print(f"[FAIL] Failed to clean dnf cache")
+            print(f"[WARN] Failed to clean dnf cache (may not be critical)")
             print(f"Error: {e.stdout}")
-            return False
         except subprocess.TimeoutExpired:
-            print(f"[FAIL] dnf clean timed out")
+            print(f"[WARN] dnf clean timed out (may not be critical)")
+
+        # Refresh repository metadata
+        print("\nRefreshing repository metadata...")
+        try:
+            # Use Popen to stream output in real-time
+            process = subprocess.Popen(
+                ["dnf", "makecache"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,  # Line buffered
+            )
+
+            # Stream output line by line
+            for line in process.stdout:
+                line = line.rstrip()
+                print(line)  # Print immediately
+                sys.stdout.flush()  # Ensure immediate display
+
+            # Wait for process to complete
+            return_code = process.wait(timeout=120)
+
+            if return_code == 0:
+                print("\n[PASS] Repository metadata refreshed")
+                return True
+            else:
+                print(
+                    f"\n[FAIL] Failed to refresh repository metadata (exit code: {return_code})"
+                )
+                return False
+        except subprocess.TimeoutExpired:
+            process.kill()
+            print(f"\n[FAIL] dnf makecache timed out")
+            return False
+        except Exception as e:
+            print(f"[FAIL] Error refreshing repository metadata: {e}")
             return False
 
     def install_deb_packages(self) -> bool:
@@ -366,8 +506,11 @@ gpgcheck=0
 
         print(f"\nPackage to install: {self.package_name}")
 
-        # Install using dnf
-        cmd = ["dnf", "install", "-y", self.package_name]
+        # Use zypper for SLES, dnf for others
+        if self._is_sles():
+            cmd = ["zypper", "install", "-y", self.package_name]
+        else:
+            cmd = ["dnf", "install", "-y", self.package_name]
         print(f"\nRunning: {' '.join(cmd)}")
         print("=" * 80)
         print("Installation progress (streaming output):\n")
