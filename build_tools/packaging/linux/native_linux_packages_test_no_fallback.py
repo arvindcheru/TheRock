@@ -183,9 +183,7 @@ class NativeLinuxPackagesTester:
         if self.release_type == "prerelease":
             # Prerelease: use GPG key
             keyring_file = "/etc/apt/keyrings/rocm.gpg"
-            repo_entry = (
-                f"deb [arch=amd64 signed-by={keyring_file}] {self.repo_url} stable main\n"
-            )
+            repo_entry = f"deb [arch=amd64 signed-by={keyring_file}] {self.repo_url} stable main\n"
         else:
             # Nightly: trusted=yes (no GPG check)
             repo_entry = f"deb [arch=amd64 trusted=yes] {self.repo_url} stable main\n"
@@ -986,5 +984,3 @@ Examples:
 
 if __name__ == "__main__":
     main()
-
-
