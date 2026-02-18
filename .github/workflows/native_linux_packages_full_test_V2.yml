@@ -85,20 +85,15 @@ on:
       - main
       - develop
     paths:
-      - '.github/workflows/full-test.yml'
+      - '.github/workflows/native_linux_packages_full_test_V2.yml'
       - 'build_tools/**'
-      - 'cmake/**'
   pull_request:
     branches:
       - main
       - develop
     paths:
-      - '.github/workflows/full-test.yml'
+      - '.github/workflows/native_linux_packages_full_test_V2.yml'
       - 'build_tools/**'
-      - 'cmake/**'
-  schedule:
-    # Run daily at 2 AM UTC
-    - cron: '0 2 * * *'
 
 permissions:
   id-token: write
@@ -112,14 +107,14 @@ jobs:
     strategy:
       fail-fast: false
     # Use appropriate runner based on package type
-    #runs-on: ${{ github.repository_owner == 'ROCm' && 'azure-linux-scale-rocm' || 'ubuntu-24.04' }}
-    runs-on: ${{ inputs.native_package_type == 'deb' && 'ubuntu-24.04' || 'ubuntu-24.04' }}
+    runs-on: ${{ github.repository_owner == 'ROCm' && 'azure-linux-scale-rocm' || 'ubuntu-24.04' }}
+    #runs-on: ${{ inputs.native_package_type == 'deb' && 'ubuntu-24.04' || 'ubuntu-24.04' }}
     container:
       # Use container matching the package type
       image: ${{ inputs.native_package_type == 'deb' && 'ubuntu:24.04' || 'almalinux:9' }}
       options: --privileged
     env:
-      ARTIFACT_RUN_LABEL: ${{ inputs.artifact_run_label }}
+      REPO_SUB_FOLDER: ${{ inputs.repo_sub_folder }}
       ROCM_VERSION: ${{ inputs.rocm_version }}
       OS_PROFILE: ${{ inputs.os_profile }}
       PACKAGE_TYPE: ${{ inputs.native_package_type }}
@@ -188,7 +183,7 @@ jobs:
           echo "=========================================================================="
           echo "Package Type: ${{ inputs.native_package_type }}"
           echo "OS Profile: ${{ inputs.os_profile }}"
-          echo "Artifact Run ID: ${{ inputs.artifact_run_label }}"
+          echo "Repository Sub Folder: ${{ inputs.repo_sub_folder }}"
           echo "Release Type: ${{ env.RELEASE_TYPE }}"
           echo "ROCm Version: ${{ inputs.rocm_version }}"
           echo "GPU Architecture: ${{ env.GFX_ARCH }}"
@@ -197,17 +192,18 @@ jobs:
           echo "=========================================================================="
           echo ""
 
-          # artifact_run_label format: build_date-artifact_run_id (e.g., 20260204-21658678136)
-          ARTIFACT_RUN_LABEL="${{ inputs.artifact_run_label }}"
+          # repo_sub_folder format: build_date-artifact_run_id (e.g., 20260204-21658678136)
+          REPO_SUB_FOLDER="${{ inputs.repo_sub_folder }}"
 
           # For prerelease, artifact_run_label might not be needed, but script requires it
-          if [ -z "$ARTIFACT_RUN_LABEL" ] && [ "${{ env.RELEASE_TYPE }}" = "prerelease" ]; then
-            ARTIFACT_RUN_LABEL="dummy"
+          if [ -z "$REPO_SUB_FOLDER" ] && [ "${{ env.RELEASE_TYPE }}" = "prerelease" ]; then
+            REPO_SUB_FOLDER=""
           fi
 
+          # Build command for package_full_test.py
           CMD="python3 build_tools/packaging/linux/package_full_test_V2.py"
           CMD="$CMD --package-type ${{ inputs.native_package_type }}"
-          CMD="$CMD --artifact-run-label ${{ inputs.artifact_run_label }}"
+          CMD="$CMD --repo-sub-folder ${{ inputs.repo_sub_folder }}"
           CMD="$CMD --repo-base-url ${{ env.REPO_BASE_URL }}"
           CMD="$CMD --rocm-version ${{ inputs.rocm_version }}"
           CMD="$CMD --os-profile ${{ inputs.os_profile }}"

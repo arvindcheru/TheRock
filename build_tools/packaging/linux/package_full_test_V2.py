@@ -28,7 +28,7 @@ class PackageFullTesterV2:
         self,
         package_type: str,
         repo_base_url: str,
-        artifact_run_label: Optional[str],
+        repo_sub_folder: Optional[str],
         rocm_version: str,
         os_profile: str,
         release_type: str = "nightly",
@@ -40,7 +40,7 @@ class PackageFullTesterV2:
         Args:
             package_type: Type of package ('deb' or 'rpm')
             repo_base_url: Base URL for repository
-            artifact_run_label: Artifact run Label (required for nightly, optional for prerelease)
+            repo_sub_folder: Repository Sub Folder (required for nightly build URL only)
             rocm_version: ROCm version
             os_profile: OS profile (e.g., ubuntu2404, rhel8)
             release_type: Type of release ('nightly' or 'prerelease')
@@ -49,7 +49,7 @@ class PackageFullTesterV2:
         """
         self.package_type = package_type.lower()
         self.repo_base_url = repo_base_url.rstrip("/")
-        self.artifact_run_label = artifact_run_label
+        self.repo_sub_folder = repo_sub_folder
         self.rocm_version = rocm_version
         self.os_profile = os_profile
         self.release_type = release_type.lower()
@@ -281,8 +281,8 @@ gpgkey={gpg_key_url}
 """
         else:
             # Nightly: no GPG check
-            repo_content = f"""[rocm-test]
-name=ROCm Test Repository
+            repo_content = f"""[pkg-test]
+name=Native Linux Package Test Repository
 baseurl={repo_url}
 enabled=1
 gpgcheck=0
@@ -680,7 +680,7 @@ gpgcheck=0
         print(f"Release Type: {self.release_type.upper()}")
         print(f"Repository Base URL: {self.repo_base_url}")
         if self.release_type == "nightly":
-            print(f"Artifact RUN Label: {self.artifact_run_label}")
+            print(f"Repository Sub Folder: {self.repo_sub_folder}")
         print(f"ROCm Version: {self.rocm_version}")
         print(f"OS Profile: {self.os_profile}")
         print(f"GPU Architecture: {self.gfx_arch}")
@@ -741,7 +741,7 @@ Examples:
   python package_full_test_V2.py \\
       --package-type deb \\
       --repo-base-url https://rocm.nightlies.amd.com \\
-      --artifact-run-label 20260204-21658678136 \\
+      --repo-sub-folder 20260204-21658678136 \\
       --rocm-version 8.0.0 \\
       --os-profile ubuntu2404 \\
       --gfx-arch gfx94x \\
@@ -751,7 +751,7 @@ Examples:
   python package_full_test_V2.py \\
       --package-type deb \\
       --repo-base-url https://rocm.prereleases.amd.com/packages \\
-      --artifact-run-label 20260204-21658678136 \\
+      --repo-sub-folder 20260204-21658678136 \\
       --rocm-version 8.0.0 \\
       --os-profile ubuntu2404 \\
       --gfx-arch gfx94x \\
@@ -761,7 +761,7 @@ Examples:
   python package_full_test_V2.py \\
       --package-type rpm \\
       --repo-base-url https://rocm.nightlies.amd.com \\
-      --artifact-run-label 20260204-21658678136 \\
+      --repo-sub-folder 20260204-21658678136 \\
       --rocm-version 8.0.0 \\
       --os-profile rhel8 \\
       --gfx-arch gfx94x \\
@@ -771,7 +771,7 @@ Examples:
   python package_full_test_V2.py \\
       --package-type rpm \\
       --repo-base-url https://rocm.prereleases.amd.com/packages \\
-      --artifact-run-label 20260204-21658678136 \\
+      --repo-sub-folder 20260204-21658678136 \\
       --rocm-version 8.0.0 \\
       --os-profile rhel8 \\
       --gfx-arch gfx94x \\
@@ -831,9 +831,9 @@ Examples:
     )
 
     parser.add_argument(
-        "--artifact-run-label",
+        "--repo-sub-folder",
         type=str,
-        help="Artifact run Label (required for nightly, can be 'dummy' for prerelease)",
+        help="Repository Sub Folder (required for nightly)",
     )
 
     args = parser.parse_args()
@@ -858,7 +858,7 @@ Examples:
     print(f"Package Type: {args.package_type}")
     print(f"Release Type: {args.release_type}")
     print(f"Repository Base URL: {args.repo_base_url}")
-    print(f"Artifact RUN LABEL: {args.artifact_run_label}")
+    print(f"Repository Sub Folder: {args.repo_sub_folder}")
     print(f"ROCm Version: {args.rocm_version}")
     print(f"OS Profile: {args.os_profile}")
     print(f"GPU Architecture: {args.gfx_arch}")
@@ -869,7 +869,7 @@ Examples:
     tester = PackageFullTesterV2(
         package_type=args.package_type,
         repo_base_url=args.repo_base_url,
-        artifact_run_label=args.artifact_run_label,
+        repo_sub_folder=args.repo_sub_folder,
         rocm_version=args.rocm_version,
         os_profile=args.os_profile,
         release_type=args.release_type,
