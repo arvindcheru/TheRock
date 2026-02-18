@@ -3,8 +3,8 @@ name: Full Test of Native Linux Packages
 on:
   workflow_call:
     inputs:
-      artifact_run_label:
-        description: "workflow run label with build date prefix (e.g., 20260204-21658678136). Format: build_date-artifact_run_id"
+      repo_sub_folder:
+        description: Repository sub folder (e.g., 20260204-21658678136). Format: build_date-artifact_run_id
         required: true
         type: string
       rocm_version:
@@ -35,8 +35,8 @@ on:
         default: "/opt/rocm/core"
   workflow_dispatch:
     inputs:
-      artifact_run_label:
-        description: "workflow run Label with build date prefix (e.g., 20260204-21658678136). Format: build_date-artifact_run_id"
+      repo_sub_folder:
+        description: Repository Sub Folder (e.g., 20260204-21658678136). Format: build_date-artifact_run_id.
         required: true
         type: string
       rocm_version:
@@ -114,10 +114,10 @@ jobs:
       image: ${{ inputs.native_package_type == 'deb' && 'ubuntu:24.04' || 'almalinux:9' }}
       options: --privileged
     env:
-      REPO_SUB_FOLDER: ${{ inputs.repo_sub_folder }}
-      ROCM_VERSION: ${{ inputs.rocm_version }}
-      OS_PROFILE: ${{ inputs.os_profile }}
-      PACKAGE_TYPE: ${{ inputs.native_package_type }}
+      REPO_SUB_FOLDER: ${{ inputs.repo_sub_folder || '20260204-21658678136' }}
+      ROCM_VERSION: ${{ inputs.rocm_version || '8.0.0' }}
+      OS_PROFILE: ${{ inputs.os_profile || 'ubuntu2404' }}
+      PACKAGE_TYPE: ${{ inputs.native_package_type || 'deb' }}
       GFX_ARCH: ${{ inputs.gfx_arch || 'gfx94x' }}
       RELEASE_TYPE: ${{ inputs.release_type || 'nightly' }}
       INSTALL_PREFIX: ${{ inputs.install_prefix || '/opt/rocm/core' }}
@@ -195,7 +195,7 @@ jobs:
           # repo_sub_folder format: build_date-artifact_run_id (e.g., 20260204-21658678136)
           REPO_SUB_FOLDER="${{ inputs.repo_sub_folder }}"
 
-          # For prerelease, artifact_run_label might not be needed, but script requires it
+          # For prerelease,  repository sub folder not needed
           if [ -z "$REPO_SUB_FOLDER" ] && [ "${{ env.RELEASE_TYPE }}" = "prerelease" ]; then
             REPO_SUB_FOLDER=""
           fi
@@ -287,7 +287,7 @@ jobs:
             if [ "${{ env.RELEASE_TYPE }}" = "prerelease" ]; then
               echo "Installed from: ${{ env.REPO_BASE_URL }}/${{ inputs.os_profile }}/"
             else
-              echo "Installed from: ${{ env.REPO_BASE_URL }}/${{ inputs.native_package_type }}/${{ inputs.artifact_run_label }}/${{ inputs.os_profile }}/"
+              echo "Installed from: ${{ env.REPO_BASE_URL }}/${{ inputs.native_package_type }}/${{ inputs.repo_sub_folder }}/${{ inputs.os_profile }}/"
             fi
           else
             echo "FULL INSTALLATION TEST FAILED"
