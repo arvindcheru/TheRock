@@ -106,8 +106,7 @@ jobs:
       image: ${{ inputs.native_package_type == 'deb' && 'ubuntu:24.04' || 'almalinux:9' }}
       options: --ipc host
         --group-add video
-        --device /dev/kfd
-        --device /dev/dri
+        --privileged
     env:
       REPO_SUB_FOLDER: ${{ inputs.repo_sub_folder }}
       ROCM_VERSION: ${{ inputs.rocm_version }}
