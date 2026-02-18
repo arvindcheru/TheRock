@@ -251,9 +251,24 @@ class NativeLinuxPackagesTester:
         print(f"Release Type: {self.release_type}")
         print(f"OS Profile: {self.os_profile}")
 
-        # SLES uses zypper, others use dnf/yum
+        # SLES uses zypper, but fallback to dnf if zypper is not available
+        # (e.g., when testing SLES packages on AlmaLinux container)
         if self._is_sles():
-            return self._setup_sles_repository()
+            # Check if zypper is actually available
+            try:
+                subprocess.run(
+                    ["zypper", "--version"],
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=5,
+                )
+                print("[INFO] zypper is available, using SLES-specific setup")
+                return self._setup_sles_repository()
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+                print("[WARN] zypper not available. Falling back to dnf for SLES testing.")
+                print("[WARN] This is a compatibility test, not a true SLES test.")
+                return self._setup_dnf_repository()
         else:
             return self._setup_dnf_repository()
 
@@ -506,9 +521,23 @@ gpgcheck=0
 
         print(f"\nPackage to install: {self.package_name}")
 
-        # Use zypper for SLES, dnf for others
+        # Use zypper for SLES if available, otherwise fallback to dnf
+        # (e.g., when testing SLES packages on AlmaLinux container)
         if self._is_sles():
-            cmd = ["zypper", "install", "-y", self.package_name]
+            # Check if zypper is actually available
+            try:
+                subprocess.run(
+                    ["zypper", "--version"],
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=5,
+                )
+                cmd = ["zypper", "install", "-y", self.package_name]
+                print("[INFO] Using zypper for SLES package installation")
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+                cmd = ["dnf", "install", "-y", self.package_name]
+                print("[WARN] zypper not available, using dnf as fallback for SLES testing")
         else:
             cmd = ["dnf", "install", "-y", self.package_name]
         print(f"\nRunning: {' '.join(cmd)}")
@@ -604,9 +633,21 @@ gpgcheck=0
                 cmd = ["dpkg", "-l"]
                 grep_pattern = "rocm"
             elif self._is_sles():
-                # Use zypper for SLES to list installed packages
-                cmd = ["zypper", "search", "-i", "rocm"]
-                grep_pattern = "rocm"
+                # Use zypper for SLES if available, otherwise fallback to rpm
+                try:
+                    subprocess.run(
+                        ["zypper", "--version"],
+                        check=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        timeout=5,
+                    )
+                    cmd = ["zypper", "search", "-i", "rocm"]
+                    grep_pattern = "rocm"
+                except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+                    # Fallback to rpm for SLES testing on AlmaLinux
+                    cmd = ["rpm", "-qa"]
+                    grep_pattern = "rocm"
             else:
                 # Use rpm for other RPM-based systems (RHEL, AlmaLinux, CentOS)
                 cmd = ["rpm", "-qa"]
