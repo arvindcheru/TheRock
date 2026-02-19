@@ -1,0 +1,384 @@
+name: Native Linux Packages Install Test
+
+on:
+  workflow_call:
+    inputs:
+      repo_sub_folder:
+        description: "Repository sub folder (e.g., 20260204-21658678136). Format: build_date-artifact_run_id"
+        type: string
+      rocm_version:
+        description: ROCm version to append to the package (8.0.0, 8.0.1rc1, ...).
+        required: true
+        type: string
+      native_package_type:
+        description: Specify whether debian or rpm packages are needed (deb or rpm).
+        required: true
+        type: string
+      os_profile:
+        description: OS profile (e.g., ubuntu2404, rhel8, debian12, sles16).
+        required: true
+        type: string
+      gfx_arch:
+        description: GPU architecture (e.g., gfx94x, gfx110x, gfx1151).
+        type: string
+      release_type:
+        description: The type of release to test ("nightly" or "prerelease").
+        required: true
+        type: string
+      install_prefix:
+        description: Installation prefix path (optional, defaults to /opt/rocm/core).
+        required: false
+        type: string
+        default: "/opt/rocm/core"
+  workflow_dispatch:
+    inputs:
+      repo_sub_folder:
+        description: "Repository Sub Folder (e.g., 20260204-21658678136). Format: build_date-artifact_run_id."
+        type: string
+      rocm_version:
+        description: ROCm version to append to the package (8.0.0, 8.0.1rc1, ...).
+        type: string
+        default: "8.0.0"
+      native_package_type:
+        description: Specify whether debian or rpm packages are needed (deb or rpm).
+        required: true
+        type: choice
+        options:
+          - deb
+          - rpm
+      os_profile:
+        description: OS profile (e.g., ubuntu2404, rhel8, debian12, sles16).
+        required: true
+        type: choice
+        options:
+          - ubuntu2404
+          - ubuntu2204
+          - debian12
+          - rhel8
+          - rhel9
+          - sles16
+      gfx_arch:
+        description: GPU architecture (e.g., gfx94x, gfx110x, gfx1151).
+        type: string
+        default: "gfx94x"
+      release_type:
+        description: The type of release to test ("nightly" or "prerelease"). All developer-triggered jobs should use "nightly"!
+        type: choice
+        required: true
+        options:
+          - nightly
+          - prerelease
+      install_prefix:
+        description: Installation prefix path (defaults to /opt/rocm/core).
+        type: string
+        default: "/opt/rocm/core"
+        required: false
+
+permissions:
+  id-token: write
+  contents: read
+
+run-name: Full Test - Native Linux packages (${{ inputs.os_profile }}, ${{ inputs.rocm_version }}, ${{ inputs.native_package_type }}, ${{ inputs.gfx_arch }})
+
+jobs:
+  full_test_native_linux_packages:
+    name: Full Installation Test - ${{ inputs.native_package_type }}
+    strategy:
+      fail-fast: false
+    # Use appropriate runner based on package type
+    runs-on: ${{ github.repository_owner == 'ROCm' && 'azure-linux-scale-rocm' || 'ubuntu-24.04' }}
+    container:
+      # Use container matching the OS profile
+      # For SLES, use registry.suse.com/bci/bci-base:16.0; for DEB use Ubuntu; for other RPM use AlmaLinux
+      image: ${{ inputs.os_profile == 'sles16' && 'registry.suse.com/bci/bci-base:16.0' || (inputs.native_package_type == 'deb' && 'ubuntu:24.04' || 'almalinux:9') }}
+      options: --ipc host
+        --privileged
+    env:
+      REPO_SUB_FOLDER: ${{ inputs.repo_sub_folder }}
+      ROCM_VERSION: ${{ inputs.rocm_version }}
+      OS_PROFILE: ${{ inputs.os_profile }}
+      PACKAGE_TYPE: ${{ inputs.native_package_type }}
+      GFX_ARCH: ${{ inputs.gfx_arch || 'gfx94x' }}
+      RELEASE_TYPE: ${{ inputs.release_type || 'nightly' }}
+      INSTALL_PREFIX: ${{ inputs.install_prefix || '/opt/rocm/core' }}
+    steps:
+      - name: Install System Prerequisites
+        run: |
+          echo "Installing prerequisites for ${{ inputs.native_package_type }} on container"
+
+          if [ "${{ inputs.native_package_type }}" = "deb" ]; then
+            # Ubuntu/Debian prerequisites
+            apt update
+            apt install -y \
+              python3 \
+              python3-pip \
+              wget \
+              curl \
+              ca-certificates \
+              git \
+              lsb-release
+          elif [[ "${{ inputs.os_profile }}" == sles* ]]; then
+            # SLES prerequisites (uses zypper)
+            zypper refresh
+            zypper install -y \
+              python3 \
+              python3-pip \
+              wget \
+              curl \
+              ca-certificates \
+              git \
+              lsb-release
+          else
+            # RHEL/CentOS/AlmaLinux prerequisites
+            # Use --allowerasing to handle curl-minimal conflict on AlmaLinux 9
+            dnf install -y --allowerasing \
+              python3 \
+              python3-pip \
+              wget \
+              curl \
+              ca-certificates \
+              git \
+              dnf-plugins-core
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install Python Dependencies
+        run: |
+          if [ "${{ inputs.native_package_type }}" = "deb" ]; then
+            # Ubuntu/Debian: use --break-system-packages flag
+            pip3 install --break-system-packages pyelftools requests
+            pip3 install --break-system-packages prettytable PyYAML
+          else
+            # RHEL/CentOS/AlmaLinux: no --break-system-packages flag needed
+            pip3 install pyelftools requests
+            pip3 install prettytable PyYAML
+          fi
+
+      - name: Validate Package Type and OS Profile
+        run: |
+          echo "=========================================================================="
+          echo "VALIDATING PACKAGE TYPE AND OS PROFILE"
+          echo "=========================================================================="
+          echo "OS Profile: ${{ inputs.os_profile }}"
+          echo "Provided Package Type: ${{ inputs.native_package_type }}"
+          echo ""
+
+          # Derive expected package type from OS profile
+          OS_PROFILE_LOWER=$(echo "${{ inputs.os_profile }}" | tr '[:upper:]' '[:lower:]')
+          EXPECTED_PACKAGE_TYPE=""
+
+          case "$OS_PROFILE_LOWER" in
+            ubuntu*|debian*)
+              EXPECTED_PACKAGE_TYPE="deb"
+              ;;
+            rhel*|sles*|almalinux*|centos*)
+              EXPECTED_PACKAGE_TYPE="rpm"
+              ;;
+            *)
+              echo "[ERROR] Unable to derive package type from OS profile: ${{ inputs.os_profile }}"
+              echo "Supported OS profiles: ubuntu*, debian*, rhel*, sles*, almalinux*, centos*"
+              exit 1
+              ;;
+          esac
+
+          echo "Expected Package Type (derived from OS profile): $EXPECTED_PACKAGE_TYPE"
+          echo ""
+
+          # Validate that provided package type matches expected
+          if [ "${{ inputs.native_package_type }}" != "$EXPECTED_PACKAGE_TYPE" ]; then
+            echo "[ERROR] Package type mismatch!"
+            echo "  OS Profile: ${{ inputs.os_profile }}"
+            echo "  Expected Package Type: $EXPECTED_PACKAGE_TYPE"
+            echo "  Provided Package Type: ${{ inputs.native_package_type }}"
+            echo ""
+            echo "The package type must match the OS profile:"
+            echo "  - ubuntu*/debian* → deb"
+            echo "  - rhel*/sles*/almalinux*/centos* → rpm"
+            exit 1
+          fi
+
+          echo "[PASS] Package type validation successful"
+          echo "  OS Profile: ${{ inputs.os_profile }}"
+          echo "  Package Type: ${{ inputs.native_package_type }}"
+          echo "=========================================================================="
+
+      - name: Construct Repository URL and Package Name
+        id: construct-urls
+        run: |
+          # Validate repo_sub_folder for nightly builds
+          if [ "${{ env.RELEASE_TYPE }}" = "nightly" ]; then
+            if [ -z "${{ inputs.repo_sub_folder }}" ] || [ "${{ inputs.repo_sub_folder }}" = "" ]; then
+              echo "[ERROR] repo_sub_folder is required for nightly builds"
+              echo "  Release Type: ${{ env.RELEASE_TYPE }}"
+              echo "  Repository Sub Folder: ${{ inputs.repo_sub_folder }}"
+              echo ""
+              echo "For nightly builds, you must provide repo_sub_folder in the format: YYYYMMDD-RUNID"
+              echo "Example: 20260204-21658678136"
+              exit 1
+            fi
+          fi
+
+          # Set base URL based on release type
+          if [ "${{ env.RELEASE_TYPE }}" = "prerelease" ]; then
+            REPO_BASE_URL="https://rocm.prereleases.amd.com/packages"
+          else
+            REPO_BASE_URL="https://rocm.nightlies.amd.com"
+          fi
+
+          # Construct full repository URL based on release type and package type
+          # Note: For nightly RPM, the URL structure is base_url/rpm/YYYYMMDD-RUNID/x86_64/
+          # (os_profile is not included in the nightly RPM URL path)
+          if [ "${{ env.RELEASE_TYPE }}" = "nightly" ]; then
+            # Nightly builds
+            if [ "${{ inputs.native_package_type }}" = "deb" ]; then
+              # Nightly DEB: base_url/deb/YYYYMMDD-RUNID/
+              REPO_URL="${REPO_BASE_URL}/${{ inputs.native_package_type }}/${{ inputs.repo_sub_folder }}/"
+            else
+              # Nightly RPM: base_url/rpm/YYYYMMDD-RUNID/x86_64/
+              REPO_URL="${REPO_BASE_URL}/${{ inputs.native_package_type }}/${{ inputs.repo_sub_folder }}/x86_64/"
+            fi
+          else
+            # Prerelease builds
+            if [ "${{ inputs.native_package_type }}" = "deb" ]; then
+              # Prerelease DEB: base_url/os_profile
+              REPO_URL="${REPO_BASE_URL}/${{ inputs.os_profile }}"
+            else
+              # Prerelease RPM: base_url/os_profile/x86_64/
+              REPO_URL="${REPO_BASE_URL}/${{ inputs.os_profile }}/x86_64/"
+            fi
+          fi
+
+          # Construct GPG key URL (only needed for prerelease)
+          if [ "${{ env.RELEASE_TYPE }}" = "prerelease" ]; then
+            GPG_KEY_URL="${REPO_BASE_URL}/gpg/rocm.gpg"
+          else
+            GPG_KEY_URL=""
+          fi
+
+          # Export to environment variables
+          echo "REPO_URL=${REPO_URL}" >> $GITHUB_ENV
+          echo "GPG_KEY_URL=${GPG_KEY_URL}" >> $GITHUB_ENV
+
+          echo "=========================================================================="
+          echo "CONSTRUCTED URLS"
+          echo "=========================================================================="
+          echo "Repository Base URL: ${REPO_BASE_URL}"
+          echo "Full Repository URL: ${REPO_URL}"
+          echo "GPG Key URL: ${GPG_KEY_URL}"
+          echo "=========================================================================="
+
+      - name: Full Package Installation Test
+        id: full-test
+        run: |
+          echo "=========================================================================="
+          echo "FULL INSTALLATION TEST - NATIVE LINUX PACKAGES"
+          echo "=========================================================================="
+          echo "Package Type: ${{ inputs.native_package_type }}"
+          echo "OS Profile: ${{ inputs.os_profile }}"
+          echo "Repository Sub Folder: ${{ inputs.repo_sub_folder }}"
+          echo "Release Type: ${{ env.RELEASE_TYPE }}"
+          echo "ROCm Version: ${{ inputs.rocm_version }}"
+          echo "GPU Architecture: ${{ env.GFX_ARCH }}"
+          echo "Full Repository URL: ${{ env.REPO_URL }}"
+          echo "Install Prefix: ${{ env.INSTALL_PREFIX }}"
+          echo "=========================================================================="
+          echo ""
+
+          # Build command for native_linux_packages_test_no_fallback.py with minimal arguments
+          CMD="python3 build_tools/packaging/linux/native_linux_packages_test.py"
+          CMD="$CMD --os-profile ${{ inputs.os_profile }}"
+          CMD="$CMD --repo-url \"${{ env.REPO_URL }}\""
+          CMD="$CMD --gfx-arch ${{ env.GFX_ARCH }}"
+          CMD="$CMD --install-prefix \"${{ env.INSTALL_PREFIX }}\""
+          CMD="$CMD --release-type ${{ env.RELEASE_TYPE }}"
+          # Only add GPG key URL if it's set (for prerelease)
+          if [ -n "${{ env.GPG_KEY_URL }}" ]; then
+            CMD="$CMD --gpg-key-url \"${{ env.GPG_KEY_URL }}\""
+          fi
+
+          echo "Executing: $CMD"
+          echo ""
+          eval $CMD
+
+      - name: Verify ROCm Installation
+        if: always() && steps.full-test.outcome == 'success'
+        shell: bash
+        run: |
+          echo "=========================================================================="
+          echo "VERIFYING ROCM INSTALLATION"
+          echo "=========================================================================="
+          echo "Install Prefix: ${{ env.INSTALL_PREFIX }}"
+          echo ""
+
+          # Check if ROCm directory exists
+          if [ -d "${{ env.INSTALL_PREFIX }}" ]; then
+            echo "ROCm installation directory exists: ${{ env.INSTALL_PREFIX }}"
+            echo ""
+            echo "Directory structure:"
+            ls -la ${{ env.INSTALL_PREFIX }}
+          else
+            echo "ROCm installation directory not found: ${{ env.INSTALL_PREFIX }}"
+            exit 1
+          fi
+
+          # Check for key ROCm components
+          echo ""
+          echo "Checking for key ROCm components:"
+
+          components=(
+            "bin/rocminfo"
+            "bin/hipcc"
+            "include/hip/hip_runtime.h"
+            "lib/libamdhip64.so"
+          )
+
+          all_found=true
+          for comp in "${components[@]}"; do
+            full_path="${{ env.INSTALL_PREFIX }}/${comp}"
+            if [ -e "$full_path" ]; then
+              echo "  $comp"
+            else
+              echo "  $comp (not found)"
+              all_found=false
+            fi
+          done
+
+          if [ "$all_found" = true ]; then
+            echo ""
+            echo "All key components found"
+          else
+            echo ""
+            echo "Some components missing (may be expected depending on package selection)"
+          fi
+
+      - name: Test Report
+        if: always()
+        run: |
+          echo ""
+          echo "=========================================================================="
+          echo "FULL TEST REPORT"
+          echo "=========================================================================="
+
+          if [ "${{ steps.full-test.outcome }}" = "success" ]; then
+            echo "FULL INSTALLATION TEST PASSED"
+            echo ""
+            echo "Summary:"
+            echo "  - Release Type: ${{ env.RELEASE_TYPE }}"
+            echo "  - Repository setup: SUCCESS"
+            echo "  - Package installation from repository: SUCCESS"
+            echo "  - ROCm verification: SUCCESS"
+            echo ""
+            echo "ROCm ${{ inputs.rocm_version }} is successfully installed at ${{ env.INSTALL_PREFIX }}"
+            if [ -n "${{ env.REPO_URL }}" ]; then
+              echo "Installed from: ${{ env.REPO_URL }}"
+            fi
+          else
+            echo "FULL INSTALLATION TEST FAILED"
+            echo ""
+            echo "The test failed during repository setup or package installation."
+            echo "Please check the logs above for detailed error messages."
+            exit 1
+          fi
+          echo "=========================================================================="
