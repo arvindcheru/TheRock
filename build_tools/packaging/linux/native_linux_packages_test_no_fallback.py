@@ -154,43 +154,10 @@ class NativeLinuxPackagesTester:
                 print(f"[FAIL] Error setting up GPG key: {e}")
                 return False
         else:  # rpm
-            # For RPM (including SLES), import GPG key using rpm --import
-            try:
-                # Download GPG key
-                print(f"\nDownloading GPG key from {self.gpg_key_url}...")
-                result = subprocess.run(
-                    ["wget", "-q", "-O", "-", self.gpg_key_url],
-                    check=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    timeout=30,
-                )
-
-                # Import GPG key using rpm --import
-                print("\nImporting GPG key...")
-                import_process = subprocess.Popen(
-                    ["rpm", "--import", "-"],
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                )
-                stdout, stderr = import_process.communicate(
-                    input=result.stdout, timeout=30
-                )
-
-                if import_process.returncode != 0:
-                    print(f"[FAIL] Failed to import GPG key: {stderr.decode()}")
-                    return False
-
-                print("[PASS] GPG key imported successfully")
-                return True
-
-            except subprocess.CalledProcessError as e:
-                print(f"[FAIL] Failed to download GPG key: {e}")
-                return False
-            except Exception as e:
-                print(f"[FAIL] Error setting up GPG key: {e}")
-                return False
+            # For RPM (including SLES), GPG key URL is specified in repo file
+            # zypper will automatically fetch and use the GPG key from the URL
+            # No need to download or import separately (following official ROCm documentation)
+            return True
 
     def setup_deb_repository(self) -> bool:
         """Setup DEB repository on the system.
@@ -291,21 +258,9 @@ class NativeLinuxPackagesTester:
 
     def _setup_sles_repository(self) -> bool:
         """Setup repository for SLES using zypper.
-
-        Follows the official ROCm documentation approach:
-        https://rocm.docs.amd.com/projects/install-on-linux/en/latest/install/install-methods/package-manager/package-manager-sles.html
-
         Returns:
             True if setup successful, False otherwise
         """
-        print("\nUsing zypper for SLES repository setup...")
-        print("Following official ROCm SLES installation documentation")
-
-        # Setup GPG key for prerelease
-        if self.release_type == "prerelease":
-            if not self.setup_gpg_key():
-                return False
-
         repo_name = "rocm-test"
         repo_file = f"/etc/zypp/repos.d/{repo_name}.repo"
 
@@ -318,6 +273,7 @@ class NativeLinuxPackagesTester:
         )  # Ignore errors if repo doesn't exist
 
         # Create repository file following official ROCm documentation format
+        # Reference: https://rocm.docs.amd.com/projects/install-on-linux/en/latest/install/install-methods/package-manager/package-manager-sles.html
         print(f"\nCreating ROCm repository file at {repo_file}...")
         if self.release_type == "prerelease" and self.gpg_key_url:
             # Prerelease: use GPG key (gpgcheck=1)
