@@ -37,7 +37,9 @@ class NativeLinuxPackagesTester:
         os_profile_lower = os_profile.lower()
         if os_profile_lower.startswith(("ubuntu", "debian")):
             return "deb"
-        elif os_profile_lower.startswith(("rhel", "sles", "almalinux", "centos", "azl")):
+        elif os_profile_lower.startswith(
+            ("rhel", "sles", "almalinux", "centos", "azl")
+        ):
             return "rpm"
         else:
             raise ValueError(
