@@ -86,7 +86,7 @@ jobs:
     strategy:
       fail-fast: false
     # Use appropriate runner based on package type
-    runs-on: ${{ github.repository_owner == 'ROCm' && 'azure-linux-scale-rocm' || 'ubuntu-24.04' }}
+    runs-on: ${{ github.repository_owner == 'ROCm' && 'linux-mi325-1gpu-ossci-rocm' || 'ubuntu-24.04' }}
     container:
       # Use container matching the OS profile
       # For SLES, use registry.suse.com/bci/bci-base:16.0; for DEB use Ubuntu; for other RPM use AlmaLinux

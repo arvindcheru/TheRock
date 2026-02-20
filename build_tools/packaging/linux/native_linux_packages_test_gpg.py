@@ -129,7 +129,7 @@ class NativeLinuxPackagesTester:
                     f"gpg --dearmor | "
                     f"tee {keyring_file} > /dev/null"
                 )
-                
+
                 result = subprocess.run(
                     pipeline_cmd,
                     shell=True,
