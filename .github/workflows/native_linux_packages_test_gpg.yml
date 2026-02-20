@@ -15,7 +15,7 @@ on:
         required: true
         type: string
       os_profile:
-        description: OS profile (e.g., ubuntu2404, rhel8, debian12, sles16).
+        description: OS profile (e.g., ubuntu2404, rhel8, debian12, sles16, azl3).
         required: true
         type: string
       gfx_arch:
@@ -47,7 +47,7 @@ on:
           - deb
           - rpm
       os_profile:
-        description: OS profile (e.g., ubuntu2404, rhel8, debian12, sles16).
+        description: OS profile (e.g., ubuntu2404, rhel8, debian12, sles16, azl3).
         required: true
         type: choice
         options:
@@ -57,6 +57,7 @@ on:
           - rhel8
           - rhel9
           - sles16
+          - azl3
       gfx_arch:
         description: GPU architecture (e.g., gfx94x, gfx110x, gfx1151).
         type: string
@@ -173,12 +174,12 @@ jobs:
             ubuntu*|debian*)
               EXPECTED_PACKAGE_TYPE="deb"
               ;;
-            rhel*|sles*|almalinux*|centos*)
+            rhel*|sles*|almalinux*|centos*|azl*)
               EXPECTED_PACKAGE_TYPE="rpm"
               ;;
             *)
               echo "[ERROR] Unable to derive package type from OS profile: ${{ inputs.os_profile }}"
-              echo "Supported OS profiles: ubuntu*, debian*, rhel*, sles*, almalinux*, centos*"
+              echo "Supported OS profiles: ubuntu*, debian*, rhel*, sles*, almalinux*, centos*, azl*"
               exit 1
               ;;
           esac
@@ -195,7 +196,7 @@ jobs:
             echo ""
             echo "The package type must match the OS profile:"
             echo "  - ubuntu*/debian* → deb"
-            echo "  - rhel*/sles*/almalinux*/centos* → rpm"
+            echo "  - rhel*/sles*/almalinux*/centos*/azl* → rpm"
             exit 1
           fi
 
@@ -287,7 +288,7 @@ jobs:
           echo ""
 
           # Build command for native_linux_packages_test_no_fallback.py with minimal arguments
-          CMD="python3 build_tools/packaging/linux/native_linux_packages_test_gpg.py"
+          CMD="python3 build_tools/packaging/linux/native_linux_packages_test.py"
           CMD="$CMD --os-profile ${{ inputs.os_profile }}"
           CMD="$CMD --repo-url \"${{ env.REPO_URL }}\""
           CMD="$CMD --gfx-arch ${{ env.GFX_ARCH }}"
