@@ -54,8 +54,11 @@ on:
           - ubuntu2404
           - ubuntu2204
           - debian12
+          - debian13
           - rhel8
           - rhel9
+          - rhel10
+          - sles15
           - sles16
           - almalinux9
           - centos7
