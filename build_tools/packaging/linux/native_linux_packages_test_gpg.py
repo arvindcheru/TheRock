@@ -3,14 +3,54 @@
 # SPDX-License-Identifier: MIT
 
 """
-Full installation test script for ROCm native packages (V2 - Optimized).
+Full installation test script for ROCm native packages.
 
-This optimized version reduces the number of parameters by moving URL generation
-and package name construction logic to the YAML workflow file.
+This script sets up the package-manager repository, installs ROCm native packages
+(amdrocm-{gfx_arch}), and verifies the installation. URL generation and package
+name construction are delegated to the YAML workflow when run from CI.
+
+Prerequisites:
+- This script does NOT start Docker or a VM. You must run it inside an existing
+  container or VM that matches the target OS (e.g., Ubuntu for deb, AlmaLinux/RHEL
+  for rpm, SLES container for sles). Start the appropriate Docker image or VM
+  first, then invoke this script from inside that environment.
+- Root or sudo is required (repository setup, package install, keyring writes).
+- System packages: python3, pip, wget, curl; pip packages: pyelftools, requests,
+  prettytable, PyYAML.
 
 Supports both nightly and prerelease builds:
-- Nightly builds: https://rocm.nightlies.amd.com/
-- Prerelease builds: https://rocm.prereleases.amd.com/packages/
+- Nightly: https://rocm.nightlies.amd.com/
+- Prerelease: https://rocm.prereleases.amd.com/packages/
+
+Example invocations:
+
+  # Nightly DEB (Ubuntu 24.04) - run inside ubuntu:24.04 container or VM
+  python3 native_linux_packages_test.py \\
+    --os-profile ubuntu2404 \\
+    --repo-url https://rocm.nightlies.amd.com/deb/20260204-21658678136/ \\
+    --gfx-arch gfx94x \\
+    --release-type nightly
+
+  # Prerelease DEB with GPG verification
+  python3 native_linux_packages_test.py \\
+    --os-profile ubuntu2404 \\
+    --repo-url https://rocm.prereleases.amd.com/packages/ubuntu2404 \\
+    --release-type prerelease \\
+    --gpg-key-url https://rocm.prereleases.amd.com/packages/gpg/rocm.gpg
+
+  # Nightly RPM (RHEL 8) - run inside rhel8/almalinux container or VM
+  python3 native_linux_packages_test.py \\
+    --os-profile rhel8 \\
+    --repo-url https://rocm.nightlies.amd.com/rpm/20260204-21658678136/x86_64/ \\
+    --gfx-arch gfx94x \\
+    --release-type nightly
+
+  # Prerelease RPM (SLES 16)
+  python3 native_linux_packages_test.py \\
+    --os-profile sles16 \\
+    --repo-url https://rocm.prereleases.amd.com/packages/sles16/x86_64/ \\
+    --release-type prerelease \\
+    --gpg-key-url https://rocm.prereleases.amd.com/packages/gpg/rocm.gpg
 """
 
 import argparse
@@ -18,11 +58,11 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Union
 
 
 class NativeLinuxPackagesTester:
-    """Full installation tester for ROCm native Linux packages with minimal parameters."""
+    """Full installation tester for ROCm native Linux packages."""
 
     @staticmethod
     def _derive_package_type(os_profile: str) -> str:
@@ -61,7 +101,7 @@ class NativeLinuxPackagesTester:
         os_profile: str,
         release_type: str = "nightly",
         install_prefix: str = "/opt/rocm/core",
-        gfx_arch: Optional[str] = None,
+        gfx_arch: Optional[Union[str, List[str]]] = None,
         gpg_key_url: Optional[str] = None,
     ):
         """Initialize the package full tester.
@@ -71,7 +111,8 @@ class NativeLinuxPackagesTester:
             os_profile: OS profile (e.g., ubuntu2404, rhel8, debian12, sles16, almalinux9, centos7, azl3)
             release_type: Type of release ('nightly' or 'prerelease')
             install_prefix: Installation prefix (default: /opt/rocm/core)
-            gfx_arch: GPU architecture (default: gfx94x)
+            gfx_arch: GPU architecture(s) as a single value or list (default: gfx94x).
+                Only the first element is used for package name and installation.
             gpg_key_url: GPG key URL (only needed for prerelease)
         """
         self.os_profile = os_profile.lower()
@@ -79,10 +120,17 @@ class NativeLinuxPackagesTester:
         self.repo_url = repo_url.rstrip("/")
         self.release_type = release_type.lower()
         self.install_prefix = install_prefix
-        self.gfx_arch = gfx_arch.lower() if gfx_arch else "gfx94x"
+        # Normalize to list; only the first element is used for now
+        if gfx_arch is None:
+            self.gfx_arch_list: List[str] = ["gfx94x"]
+        elif isinstance(gfx_arch, str):
+            self.gfx_arch_list = [gfx_arch] if gfx_arch.strip() else ["gfx94x"]
+        else:
+            self.gfx_arch_list = [a for a in gfx_arch if a and str(a).strip()] or ["gfx94x"]
+        self.gfx_arch = self.gfx_arch_list[0].lower()
         self.gpg_key_url = gpg_key_url
 
-        # Construct package name from gfx_arch
+        # Construct package name from first gfx_arch (only first element used for now)
         self.package_name = f"amdrocm-{self.gfx_arch}"
 
         # Validate inputs
@@ -236,32 +284,6 @@ class NativeLinuxPackagesTester:
         except Exception as e:
             print(f"[FAIL] Error updating package lists: {e}")
             return False
-
-    def setup_rpm_repository(self) -> bool:
-        """Setup RPM repository on the system.
-
-        Returns:
-            True if setup successful, False otherwise
-        """
-        print("\n" + "=" * 80)
-        print("SETTING UP RPM REPOSITORY")
-        print("=" * 80)
-
-        print(f"\nRepository URL: {self.repo_url}")
-        print(f"Release Type: {self.release_type}")
-        print(f"OS Profile: {self.os_profile}")
-
-        # Setup GPG key if GPG key URL is provided (only needed for non-SLES systems)
-        # SLES uses --gpg-auto-import-keys flag which handles it automatically
-        if self.gpg_key_url and not self._is_sles():
-            if not self.setup_gpg_key():
-                return False
-
-        # SLES uses zypper, others use dnf/yum
-        if self._is_sles():
-            return self._setup_sles_repository()
-        else:
-            return self._setup_dnf_repository()
 
     def _setup_sles_repository(self) -> bool:
         """Setup repository for SLES using zypper.
@@ -448,6 +470,32 @@ gpgcheck=0
         except Exception as e:
             print(f"[FAIL] Error refreshing repository metadata: {e}")
             return False
+
+    def setup_rpm_repository(self) -> bool:
+        """Setup RPM repository on the system.
+
+        Returns:
+            True if setup successful, False otherwise
+        """
+        print("\n" + "=" * 80)
+        print("SETTING UP RPM REPOSITORY")
+        print("=" * 80)
+
+        print(f"\nRepository URL: {self.repo_url}")
+        print(f"Release Type: {self.release_type}")
+        print(f"OS Profile: {self.os_profile}")
+
+        # Setup GPG key if GPG key URL is provided (only needed for non-SLES systems)
+        # SLES uses --gpg-auto-import-keys flag which handles it automatically
+        if self.gpg_key_url and not self._is_sles():
+            if not self.setup_gpg_key():
+                return False
+
+        # SLES uses zypper, others use dnf/yum
+        if self._is_sles():
+            return self._setup_sles_repository()
+        else:
+            return self._setup_dnf_repository()
 
     def install_deb_packages(self) -> bool:
         """Install ROCm DEB packages from repository.
@@ -828,13 +876,13 @@ gpgcheck=0
             True if all operations successful, False otherwise
         """
         print("\n" + "=" * 80)
-        print("FULL INSTALLATION TEST - NATIVE LINUX PACKAGES (V2 - OPTIMIZED)")
+        print("FULL INSTALLATION TEST - NATIVE LINUX PACKAGES")
         print("=" * 80)
         print(f"\nOS Profile: {self.os_profile}")
         print(f"Package Type (derived): {self.package_type.upper()}")
         print(f"Release Type: {self.release_type.upper()}")
         print(f"Repository URL: {self.repo_url}")
-        print(f"GPU Architecture: {self.gfx_arch}")
+        print(f"GPU Architecture(s): {self.gfx_arch_list} (using first: {self.gfx_arch})")
         print(f"Package Name: {self.package_name}")
         print(f"Install Prefix: {self.install_prefix}")
 
@@ -884,7 +932,7 @@ gpgcheck=0
 def main():
     """Main entry point for the script."""
     parser = argparse.ArgumentParser(
-        description="Full installation test for ROCm native packages (V2 - Optimized with minimal parameters)",
+        description="Full installation test for ROCm native packages",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -941,8 +989,10 @@ Examples:
     parser.add_argument(
         "--gfx-arch",
         type=str,
-        default="gfx94x",
-        help="GPU architecture (default: gfx94x). Examples: gfx94x, gfx110x, gfx1151",
+        nargs="*",
+        default=["gfx94x"],
+        metavar="ARCH",
+        help="GPU architecture(s) as a list (default: gfx94x). Only the first is used for now. Examples: gfx94x, gfx110x gfx1151",
     )
 
     parser.add_argument(
@@ -978,8 +1028,8 @@ Examples:
     if not args.repo_url or not args.repo_url.strip():
         parser.error("Repository URL cannot be empty")
 
-    if not args.gfx_arch or not args.gfx_arch.strip():
-        parser.error("GPU architecture cannot be empty")
+    if not args.gfx_arch or not args.gfx_arch[0].strip():
+        parser.error("GPU architecture list cannot be empty; first element is required")
 
     # Derive package type from OS profile
     try:
@@ -997,7 +1047,7 @@ Examples:
     print(f"Package Type (derived): {derived_package_type}")
     print(f"Release Type: {args.release_type}")
     print(f"Repository URL: {args.repo_url}")
-    print(f"GPU Architecture: {args.gfx_arch}")
+    print(f"GPU Architecture(s): {args.gfx_arch} (using first: {args.gfx_arch[0]})")
     print(f"Install Prefix: {args.install_prefix}")
     if args.gpg_key_url:
         print(f"GPG Key URL: {args.gpg_key_url}")
