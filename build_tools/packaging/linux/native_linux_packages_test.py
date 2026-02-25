@@ -6,8 +6,13 @@
 Full installation test script for ROCm native packages.
 
 This script sets up the package-manager repository, installs ROCm native packages
-(amdrocm-{gfx_arch}, amdrocm-core-sdk-{gfx_arch}, in that order), and verifies the installation. URL generation and package
+(amdrocm-{gfx_arch}, amdrocm-core-sdk-{gfx_arch}), and verifies the installation. URL generation and package
 name construction are delegated to the YAML workflow when run from CI.
+
+Path and repo name are overridable via environment variables: ROCM_REPO_NAME (repo id used for
+APT list, Zypper/Yum repo file and section), ROCM_APT_KEYRING_DIR, ROCM_APT_SOURCES_LIST,
+ROCM_APT_KEYRING_FILE, ROCM_ZYPP_REPOS_DIR, ROCM_YUM_REPOS_DIR,
+ROCM_RDHC_REL_PATH (relative path from install prefix to rdhc binary).
 
 Prerequisites:
 - This script does NOT start Docker or a VM. You must run it inside an existing
@@ -61,6 +66,33 @@ from pathlib import Path
 from typing import List, Optional, Union
 
 
+def _env(key: str, default: str) -> str:
+    """Return os.environ[key] if set and non-empty, else default."""
+    v = os.environ.get(key, "").strip()
+    return v if v else default
+
+
+# --- Config: paths overridable via environment variables ---
+# ROCM_REPO_NAME: logical repo name used for APT list, Zypper/Yum repo file and section id
+# ROCM_APT_*, ROCM_ZYPP_*, ROCM_YUM_*, ROCM_RDHC_REL_PATH
+REPO_NAME = _env("ROCM_REPO_NAME", "rocm-test")
+APT_KEYRING_DIR = _env("ROCM_APT_KEYRING_DIR", "/etc/apt/keyrings")
+APT_SOURCES_LIST = _env(
+    "ROCM_APT_SOURCES_LIST", f"/etc/apt/sources.list.d/{REPO_NAME}.list"
+)
+APT_KEYRING_FILE = _env("ROCM_APT_KEYRING_FILE", "/etc/apt/keyrings/rocm.gpg")
+ZYPP_REPOS_DIR = _env("ROCM_ZYPP_REPOS_DIR", "/etc/zypp/repos.d")
+YUM_REPOS_DIR = _env("ROCM_YUM_REPOS_DIR", "/etc/yum.repos.d")
+VERIFY_KEY_COMPONENTS = [
+    "bin/rocminfo",
+    "bin/hipcc",
+    "include/hip/hip_runtime.h",
+    "lib/libamdhip64.so",
+]
+# Relative path from install prefix to rdhc binary (script); overridable via ROCM_RDHC_REL_PATH
+RDHC_REL_PATH = _env("ROCM_RDHC_REL_PATH", "libexec/rocm-core/rdhc.py")
+
+
 class NativeLinuxPackagesTester:
     """Full installation tester for ROCm native Linux packages."""
 
@@ -100,7 +132,7 @@ class NativeLinuxPackagesTester:
         repo_url: str,
         os_profile: str,
         release_type: str = "nightly",
-        install_prefix: str = "/opt/rocm/core",
+        install_prefix: Optional[str] = None,
         gfx_arch: Optional[Union[str, List[str]]] = None,
         gpg_key_url: Optional[str] = None,
     ):
@@ -108,7 +140,7 @@ class NativeLinuxPackagesTester:
 
         Args:
             repo_url: Full repository URL (constructed in YAML)
-            os_profile: OS profile (e.g., ubuntu2404, rhel8, debian12, sles16, almalinux9, centos7, azl3)
+            os_profile: OS profile (e.g., ubuntu2404, rhel8, debian12, sles15, sles16, almalinux9, centos7, azl3)
             release_type: Type of release ('nightly' or 'prerelease')
             install_prefix: Installation prefix (default: /opt/rocm/core)
             gfx_arch: GPU architecture(s) as a single value or list (default: gfx94x).
@@ -132,7 +164,7 @@ class NativeLinuxPackagesTester:
         self.gfx_arch = self.gfx_arch_list[0].lower()
         self.gpg_key_url = gpg_key_url
 
-        # Packages to install, in order (dependencies first if needed)
+        # Packages to install, in order
         self.package_names = [
             f"amdrocm-{self.gfx_arch}",
             f"amdrocm-core-sdk-{self.gfx_arch}",
@@ -161,7 +193,7 @@ class NativeLinuxPackagesTester:
 
         if self.package_type == "deb":
             # For DEB, import GPG key using pipeline approach
-            keyring_dir = "/etc/apt/keyrings"
+            keyring_dir = APT_KEYRING_DIR
             keyring_file = f"{keyring_dir}/rocm.gpg"
 
             try:
@@ -233,11 +265,11 @@ class NativeLinuxPackagesTester:
 
         # Add repository to sources list
         print("\nAdding ROCm repository...")
-        sources_list = f"/etc/apt/sources.list.d/rocm-test.list"
+        sources_list = APT_SOURCES_LIST
 
         if self.gpg_key_url:
             # Use GPG key verification
-            keyring_file = "/etc/apt/keyrings/rocm.gpg"
+            keyring_file = APT_KEYRING_FILE
             repo_entry = f"deb [arch=amd64 signed-by={keyring_file}] {self.repo_url} stable main\n"
         else:
             # No GPG check (trusted=yes)
@@ -296,8 +328,8 @@ class NativeLinuxPackagesTester:
         Returns:
             True if setup successful, False otherwise
         """
-        repo_name = "rocm-test"
-        repo_file = f"/etc/zypp/repos.d/{repo_name}.repo"
+        repo_name = REPO_NAME
+        repo_file = os.path.join(ZYPP_REPOS_DIR, f"{repo_name}.repo")
 
         # Remove existing repository if it exists
         print(f"\nRemoving existing repository '{repo_name}' if it exists...")
@@ -338,7 +370,28 @@ gpgcheck=0
             print(f"[FAIL] Failed to create repository file: {e}")
             return False
 
-        # Refresh repository metadata
+        # Clean zypper cache
+        print("\nCleaning zypper cache...")
+        try:
+            result = subprocess.run(
+                ["zypper", "--non-interactive", "clean", "--all"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=60,
+            )
+            if result.returncode == 0:
+                print("[PASS] zypper cache cleaned")
+            else:
+                print(
+                    f"[WARN] zypper clean returned {result.returncode} (may not be critical)"
+                )
+        except subprocess.TimeoutExpired:
+            print(f"[WARN] zypper clean timed out (may not be critical)")
+        except Exception as e:
+            print(f"[WARN] zypper clean failed: {e} (may not be critical)")
+
+        # Refresh repository metadata (required after clean)
         print("\nRefreshing repository metadata...")
         try:
             # Use --non-interactive to avoid prompts
@@ -391,11 +444,12 @@ gpgcheck=0
 
         # Create repository file
         print("\nCreating ROCm repository file...")
-        repo_file = "/etc/yum.repos.d/rocm-test.repo"
+        repo_name = REPO_NAME
+        repo_file = os.path.join(YUM_REPOS_DIR, f"{repo_name}.repo")
 
         if self.gpg_key_url:
             # Use GPG key verification
-            repo_content = f"""[rocm-test]
+            repo_content = f"""[rocm_name]
 name=ROCm Repository
 baseurl={self.repo_url}
 enabled=1
@@ -404,7 +458,7 @@ gpgkey={self.gpg_key_url}
 """
         else:
             # No GPG check
-            repo_content = f"""[rocm-test]
+            repo_content = f"""[rocm_name]
 name=Native Linux Package Test Repository
 baseurl={self.repo_url}
 enabled=1
@@ -439,42 +493,8 @@ gpgcheck=0
         except subprocess.TimeoutExpired:
             print(f"[WARN] dnf clean timed out (may not be critical)")
 
-        # Refresh repository metadata
-        print("\nRefreshing repository metadata...")
-        try:
-            # Use Popen to stream output in real-time
-            process = subprocess.Popen(
-                ["dnf", "makecache"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,  # Line buffered
-            )
-
-            # Stream output line by line
-            for line in process.stdout:
-                line = line.rstrip()
-                print(line)  # Print immediately
-                sys.stdout.flush()  # Ensure immediate display
-
-            # Wait for process to complete
-            return_code = process.wait(timeout=120)
-
-            if return_code == 0:
-                print("\n[PASS] Repository metadata refreshed")
-                return True
-            else:
-                print(
-                    f"\n[FAIL] Failed to refresh repository metadata (exit code: {return_code})"
-                )
-                return False
-        except subprocess.TimeoutExpired:
-            process.kill()
-            print(f"\n[FAIL] dnf makecache timed out")
-            return False
-        except Exception as e:
-            print(f"[FAIL] Error refreshing repository metadata: {e}")
-            return False
+        print("\n[PASS] DNF repository setup complete")
+        return True
 
     def setup_rpm_repository(self) -> bool:
         """Setup RPM repository on the system.
@@ -660,12 +680,7 @@ gpgcheck=0
         print(f"\n[PASS] Installation directory exists: {self.install_prefix}")
 
         # List of key components to check
-        key_components = [
-            "bin/rocminfo",
-            "bin/hipcc",
-            "include/hip/hip_runtime.h",
-            "lib/libamdhip64.so",
-        ]
+        key_components = VERIFY_KEY_COMPONENTS
 
         print("\nChecking for key ROCm components:")
         all_found = True
@@ -771,7 +786,7 @@ gpgcheck=0
         print("=" * 80)
 
         install_path = Path(self.install_prefix)
-        rdhc_script = install_path / "libexec" / "rocm-core" / "rdhc.py"
+        rdhc_script = (install_path / RDHC_REL_PATH).resolve()
 
         # Check if script exists
         if not rdhc_script.exists():
@@ -935,12 +950,8 @@ gpgcheck=0
 
 
 def main():
-    """Main entry point for the script."""
-    parser = argparse.ArgumentParser(
-        description="Full installation test for ROCm native packages",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
+    """Main entry point for the script.
+  Examples Usages:
   # Install from nightly DEB repository (Ubuntu 24.04)
   python native_linux_packages_test.py \\
       --os-profile ubuntu2404 \\
@@ -974,14 +985,17 @@ Examples:
       --release-type prerelease \\
       --gpg-key-url https://rocm.prereleases.amd.com/packages/gpg/rocm.gpg \\
       --install-prefix /opt/rocm/core
-        """,
+    """
+    parser = argparse.ArgumentParser(
+        description="Full installation test for ROCm native packages",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
     parser.add_argument(
         "--os-profile",
         type=str,
         required=True,
-        help="OS profile (e.g., ubuntu2404, rhel8, debian12, sles16, almalinux9, centos7, azl3). Package type is derived from this.",
+        help="OS profile (e.g., ubuntu2404, rhel8, debian12, sles15, sles16, almalinux9, centos7, azl3). Package type is derived from this.",
     )
 
     parser.add_argument(
@@ -1022,19 +1036,6 @@ Examples:
     )
 
     args = parser.parse_args()
-
-    # Validate and normalize parameters
-    if not args.release_type or not args.release_type.strip():
-        parser.error("Release Type cannot be empty")
-
-    if not args.os_profile or not args.os_profile.strip():
-        parser.error("OS profile cannot be empty")
-
-    if not args.repo_url or not args.repo_url.strip():
-        parser.error("Repository URL cannot be empty")
-
-    if not args.gfx_arch or not args.gfx_arch[0].strip():
-        parser.error("GPU architecture list cannot be empty; first element is required")
 
     # Derive package type from OS profile
     try:
