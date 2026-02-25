@@ -140,7 +140,7 @@ class NativeLinuxPackagesTester:
 
         Args:
             repo_url: Full repository URL (constructed in YAML)
-            os_profile: OS profile (e.g., ubuntu2404, rhel8, debian12, sles16, almalinux9, centos7, azl3)
+            os_profile: OS profile (e.g., ubuntu2404, rhel8, debian12, sles15, sles16, almalinux9, centos7, azl3)
             release_type: Type of release ('nightly' or 'prerelease')
             install_prefix: Installation prefix (default: /opt/rocm/core)
             gfx_arch: GPU architecture(s) as a single value or list (default: gfx94x).
@@ -949,12 +949,8 @@ gpgcheck=0
 
 
 def main():
-    """Main entry point for the script."""
-    parser = argparse.ArgumentParser(
-        description="Full installation test for ROCm native packages",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
+    """Main entry point for the script.
+  Examples Usages:
   # Install from nightly DEB repository (Ubuntu 24.04)
   python native_linux_packages_test.py \\
       --os-profile ubuntu2404 \\
@@ -988,14 +984,17 @@ Examples:
       --release-type prerelease \\
       --gpg-key-url https://rocm.prereleases.amd.com/packages/gpg/rocm.gpg \\
       --install-prefix /opt/rocm/core
-        """,
+    """
+    parser = argparse.ArgumentParser(
+        description="Full installation test for ROCm native packages",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
     parser.add_argument(
         "--os-profile",
         type=str,
         required=True,
-        help="OS profile (e.g., ubuntu2404, rhel8, debian12, sles16, almalinux9, centos7, azl3). Package type is derived from this.",
+        help="OS profile (e.g., ubuntu2404, rhel8, debian12, sles15, sles16, almalinux9, centos7, azl3). Package type is derived from this.",
     )
 
     parser.add_argument(
@@ -1036,19 +1035,6 @@ Examples:
     )
 
     args = parser.parse_args()
-
-    # Validate and normalize parameters
-    if not args.release_type or not args.release_type.strip():
-        parser.error("Release Type cannot be empty")
-
-    if not args.os_profile or not args.os_profile.strip():
-        parser.error("OS profile cannot be empty")
-
-    if not args.repo_url or not args.repo_url.strip():
-        parser.error("Repository URL cannot be empty")
-
-    if not args.gfx_arch or not args.gfx_arch[0].strip():
-        parser.error("GPU architecture list cannot be empty; first element is required")
 
     # Derive package type from OS profile
     try:
