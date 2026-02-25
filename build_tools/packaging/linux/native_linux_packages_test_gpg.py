@@ -126,7 +126,9 @@ class NativeLinuxPackagesTester:
         elif isinstance(gfx_arch, str):
             self.gfx_arch_list = [gfx_arch] if gfx_arch.strip() else ["gfx94x"]
         else:
-            self.gfx_arch_list = [a for a in gfx_arch if a and str(a).strip()] or ["gfx94x"]
+            self.gfx_arch_list = [a for a in gfx_arch if a and str(a).strip()] or [
+                "gfx94x"
+            ]
         self.gfx_arch = self.gfx_arch_list[0].lower()
         self.gpg_key_url = gpg_key_url
 
@@ -882,7 +884,9 @@ gpgcheck=0
         print(f"Package Type (derived): {self.package_type.upper()}")
         print(f"Release Type: {self.release_type.upper()}")
         print(f"Repository URL: {self.repo_url}")
-        print(f"GPU Architecture(s): {self.gfx_arch_list} (using first: {self.gfx_arch})")
+        print(
+            f"GPU Architecture(s): {self.gfx_arch_list} (using first: {self.gfx_arch})"
+        )
         print(f"Package Name: {self.package_name}")
         print(f"Install Prefix: {self.install_prefix}")
 
