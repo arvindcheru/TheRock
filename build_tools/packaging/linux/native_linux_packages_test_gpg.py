@@ -785,7 +785,7 @@ gpgcheck=0
         print("=" * 80)
 
         install_path = Path(self.install_prefix)
-        rdhc_script = os.path.join(install_path, RDHC_REL_PATH)
+        rdhc_script = (install_path / RDHC_REL_PATH).resolve()
 
         # Check if script exists
         if not rdhc_script.exists():
