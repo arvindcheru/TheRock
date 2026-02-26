@@ -393,7 +393,7 @@ gpgcheck=0
         except Exception as e:
             print(f"[WARN] zypper clean failed: {e} (may not be critical)")
 
-        # Refresh repository metadata (required after clean)
+        # Refresh repository metadata
         print("\nRefreshing repository metadata...")
         try:
             # Use --non-interactive to avoid prompts
@@ -742,7 +742,7 @@ gpgcheck=0
             print(f"   [WARN] Could not query installed packages")
 
         # Try to run ROCMINFO_CMD
-        print(f'\nTrying to run {ROCMINFO_CMD}...')
+        print(f"\nTrying to run {ROCMINFO_CMD}...")
         try:
             result = subprocess.run(
                 ROCMINFO_CMD,
@@ -801,7 +801,7 @@ gpgcheck=0
 
         # Check if script exists
         if not rdhc_script.exists():
-            print(f"\n[WARN] rdhc not found at: {rdhc_script}")
+            print(f"\n[WARN] rdhc.py not found at: {rdhc_script}")
             print("       This is expected if rocm-core package is not installed")
             return False
 
@@ -857,7 +857,7 @@ gpgcheck=0
         print("TESTING CLINFO")
         print("=" * 80)
 
-        print(f'\nTrying to run {CLINFO_CMD}...')
+        print(f"\nTrying to run {CLINFO_CMD}...")
         try:
             result = subprocess.run(
                 CLINFO_CMD,

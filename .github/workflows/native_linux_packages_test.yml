@@ -96,7 +96,7 @@ jobs:
     container:
       # Use container matching the OS profile
       # For SLES, use registry.suse.com/bci/bci-base:16.0; for DEB use Ubuntu; for other RPM use AlmaLinux
-      image: ${{ inputs.os_profile == 'sles16' && 'registry.suse.com/bci/bci-base:16.0' || (inputs.native_package_type == 'deb' && 'ubuntu:24.04' || 'almalinux:9') }}
+      image: ${{ startsWith(inputs.os_profile, 'sles') && 'registry.suse.com/bci/bci-base:16.0' || (inputs.native_package_type == 'deb' && 'ubuntu:24.04' || 'almalinux:9') }}
       options: --ipc host
         --privileged
     env:
