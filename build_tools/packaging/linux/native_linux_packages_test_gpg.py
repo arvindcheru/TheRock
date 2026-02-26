@@ -86,11 +86,16 @@ YUM_REPOS_DIR = _env("ROCM_YUM_REPOS_DIR", "/etc/yum.repos.d")
 VERIFY_KEY_COMPONENTS = [
     "bin/rocminfo",
     "bin/hipcc",
+    "bin/clinfo",
     "include/hip/hip_runtime.h",
     "lib/libamdhip64.so",
 ]
 # Relative path from install prefix to rdhc binary (script); overridable via ROCM_RDHC_REL_PATH
 RDHC_REL_PATH = _env("ROCM_RDHC_REL_PATH", "libexec/rocm-core/rdhc.py")
+
+# Shell commands for info tools (run from PATH; no install prefix)
+ROCMINFO_CMD = 'rocminfo | grep -i "Marketing Name:"'
+CLINFO_CMD = 'clinfo | grep -i "Board name:"'
 
 
 class NativeLinuxPackagesTester:
@@ -145,7 +150,7 @@ class NativeLinuxPackagesTester:
             install_prefix: Installation prefix (default: /opt/rocm/core)
             gfx_arch: GPU architecture(s) as a single value or list (default: gfx94x).
                 Only the first element is used for package name and installation.
-            gpg_key_url: GPG key URL (only needed for prerelease)
+            gpg_key_url: GPG key URL
         """
         self.os_profile = os_profile.lower()
         self.package_type = self._derive_package_type(os_profile)
@@ -736,35 +741,42 @@ gpgcheck=0
         except subprocess.CalledProcessError as e:
             print(f"   [WARN] Could not query installed packages")
 
-        # Try to run rocminfo if available
-        rocminfo_path = install_path / "bin" / "rocminfo"
-        if rocminfo_path.exists():
-            print("\nTrying to run rocminfo...")
-            try:
-                result = subprocess.run(
-                    [str(rocminfo_path)],
-                    check=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    timeout=30,
-                )
+        # Try to run ROCMINFO_CMD
+        print(f'\nTrying to run {ROCMINFO_CMD}...')
+        try:
+            result = subprocess.run(
+                ROCMINFO_CMD,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode == 0:
                 print("   [PASS] rocminfo executed successfully")
-                # Print first few lines of output
-                lines = result.stdout.split("\n")[:10]
-                print("\n   First few lines of rocminfo output:")
-                for line in lines:
-                    if line.strip():
-                        print(f"      {line}")
-            except subprocess.TimeoutExpired:
-                print("   [WARN] rocminfo timed out (may require GPU hardware)")
-            except subprocess.CalledProcessError as e:
-                print(f"   [WARN] rocminfo failed (may require GPU hardware)")
-            except Exception as e:
-                print(f"   [WARN] Could not run rocminfo: {e}")
+                if result.stdout:
+                    print("\n   Marketing Name(s):")
+                    for line in result.stdout.split("\n"):
+                        if line.strip():
+                            print(f"      {line.strip()}")
+            else:
+                print(f"   [WARN] rocminfo/grep exited with code {result.returncode}")
+                if result.stdout:
+                    for line in result.stdout.split("\n")[:5]:
+                        if line.strip():
+                            print(f"      {line}")
+        except FileNotFoundError:
+            print("   [WARN] rocminfo not found in PATH")
+        except subprocess.TimeoutExpired:
+            print("   [WARN] rocminfo timed out (may require GPU hardware)")
+        except Exception as e:
+            print(f"   [WARN] Could not run rocminfo: {e}")
 
         # Test rdhc.py if available
         self.test_rdhc()
+
+        # Test clinfo (run directly from PATH, no install prefix)
+        self.test_clinfo()
 
         # Return success if at least some components were found
         if found_count >= 2:  # Require at least 2 key components
@@ -789,7 +801,7 @@ gpgcheck=0
 
         # Check if script exists
         if not rdhc_script.exists():
-            print(f"\n[WARN] rdhc.py not found at: {rdhc_script}")
+            print(f"\n[WARN] rdhc not found at: {rdhc_script}")
             print("       This is expected if rocm-core package is not installed")
             return False
 
@@ -827,63 +839,57 @@ gpgcheck=0
             return True
         except subprocess.TimeoutExpired:
             print("   [WARN] rdhc.py --all timed out")
-            # Try without arguments
-            return self._try_rdhc_without_args(cmd, install_path)
+            return False
         except subprocess.CalledProcessError:
-            print("   [WARN] rdhc.py --all failed, trying without arguments...")
-            # Try without arguments
-            return self._try_rdhc_without_args(cmd, install_path)
+            print("   [WARN] rdhc.py --all failed")
+            return False
         except Exception as e:
             print(f"   [WARN] Could not run rdhc.py: {e}")
             return False
 
-    def _try_rdhc_without_args(self, cmd: list, install_path: Path) -> bool:
-        """Try running rdhc.py without arguments.
-
-        Args:
-            cmd: Command to run (without arguments)
-            install_path: Installation prefix path
+    def test_clinfo(self) -> bool:
+        """Run CLINFO_CMD.
 
         Returns:
-            True if successful, False otherwise
+            True if clinfo ran successfully, False otherwise.
         """
-        print(f"\nTrying to run rdhc.py without arguments...")
-        print(f"Command: {' '.join(cmd)}")
+        print("\n" + "=" * 80)
+        print("TESTING CLINFO")
+        print("=" * 80)
 
+        print(f'\nTrying to run {CLINFO_CMD}...')
         try:
             result = subprocess.run(
-                cmd,
-                cwd=str(install_path),
-                check=True,
+                CLINFO_CMD,
+                shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
                 timeout=30,
             )
-            print("   [PASS] rdhc.py executed successfully")
-            if result.stdout:
-                # Print first few lines of output
-                lines = result.stdout.split("\n")[:5]
-                print("\n   First few lines of output:")
-                for line in lines:
-                    if line.strip():
-                        print(f"      {line}")
-            return True
-        except subprocess.TimeoutExpired:
-            print("   [WARN] rdhc.py timed out")
+            if result.returncode == 0:
+                print("\n[PASS] clinfo executed successfully")
+                if result.stdout:
+                    print("\n   Board name(s):")
+                    for line in result.stdout.split("\n"):
+                        if line.strip():
+                            print(f"      {line.strip()}")
+                return True
+            else:
+                print(f"\n[WARN] clinfo/grep exited with code {result.returncode}")
+                if result.stdout:
+                    for line in result.stdout.split("\n")[:5]:
+                        if line.strip():
+                            print(f"      {line}")
+                return False
+        except FileNotFoundError:
+            print("\n[WARN] clinfo not found in PATH")
             return False
-        except subprocess.CalledProcessError as e:
-            print(f"   [WARN] rdhc.py failed (return code: {e.returncode})")
-            if e.stdout:
-                # Print first few lines of error output
-                lines = e.stdout.split("\n")[:3]
-                print("\n   Error output:")
-                for line in lines:
-                    if line.strip():
-                        print(f"      {line}")
+        except subprocess.TimeoutExpired:
+            print("\n[WARN] clinfo timed out")
             return False
         except Exception as e:
-            print(f"   [WARN] Could not run rdhc.py: {e}")
+            print(f"\n[WARN] Could not run clinfo: {e}")
             return False
 
     def run(self) -> bool:
@@ -1007,10 +1013,10 @@ def main():
     parser.add_argument(
         "--gfx-arch",
         type=str,
-        nargs="*",
-        default=["gfx94x"],
+        nargs="+",
+        required=True,
         metavar="ARCH",
-        help="GPU architecture(s) as a list (default: gfx94x). Only the first is used for now. Examples: gfx94x, gfx110x gfx1151",
+        help="GPU architecture(s) as a list. Only the first is used for now. Examples: gfx94x, gfx110x gfx1151",
     )
 
     parser.add_argument(
@@ -1024,14 +1030,14 @@ def main():
     parser.add_argument(
         "--install-prefix",
         type=str,
-        default="/opt/rocm/core",
-        help="Installation prefix (default: /opt/rocm/core)",
+        required=True,
+        help="Installation prefix (e.g. /opt/rocm/core)",
     )
 
     parser.add_argument(
         "--gpg-key-url",
         type=str,
-        help="GPG key URL (only needed for prerelease)",
+        help="GPG key URL",
     )
 
     args = parser.parse_args()

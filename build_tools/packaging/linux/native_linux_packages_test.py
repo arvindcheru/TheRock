@@ -391,7 +391,7 @@ gpgcheck=0
         except Exception as e:
             print(f"[WARN] zypper clean failed: {e} (may not be critical)")
 
-        # Refresh repository metadata (required after clean)
+        # Refresh repository metadata
         print("\nRefreshing repository metadata...")
         try:
             # Use --non-interactive to avoid prompts
