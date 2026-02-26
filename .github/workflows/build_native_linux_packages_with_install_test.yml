@@ -33,6 +33,21 @@ on:
       ref:
           description: "Branch, tag or SHA to checkout. Defaults to the reference or SHA that triggered the workflow."
           type: string
+      gfx_arch:
+        description: GPU architectures (e.g., gfx94x gfx110x gfx1151). Space-separated list supported; script uses first only for now.
+        type: string
+      os_profile:
+        description: OS profile (e.g., ubuntu2404, rhel8, debian12, sles16, almalinux9, centos7, azl3).
+        required: true
+        type: string
+      repo_sub_folder:
+        description: "Repository sub folder (e.g., 20260204-21658678136). Format: build_date-artifact_run_id"
+        type: string
+      install_prefix:
+        description: Installation prefix path (optional, defaults to /opt/rocm/core).
+        required: false
+        type: string
+        default: "/opt/rocm/core"
   workflow_dispatch:
     inputs:
       artifact_group:
@@ -64,6 +79,35 @@ on:
       ref:
           description: "Branch, tag or SHA to checkout. Defaults to the reference or SHA that triggered the workflow."
           type: string
+      repo_sub_folder:
+        description: "Repository Sub Folder (e.g., 20260204-21658678136). Format: build_date-artifact_run_id."
+        type: string
+      os_profile:
+        description: OS profile (e.g., ubuntu2404, rhel8, debian12, sles16, almalinux9, centos7, azl3).
+        required: true
+        type: choice
+        options:
+          - ubuntu2404
+          - ubuntu2204
+          - debian12
+          - debian13
+          - rhel8
+          - rhel9
+          - rhel10
+          - sles15
+          - sles16
+          - almalinux9
+          - centos7
+          - azl3
+      gfx_arch:
+        description: GPU architectures (e.g., gfx94x gfx110x gfx1151). Space-separated list supported; script uses first only for now.
+        type: string
+        default: "gfx94x"
+      install_prefix:
+        description: Installation prefix path (defaults to /opt/rocm/core).
+        type: string
+        default: "/opt/rocm/core"
+        required: false
 
 permissions:
   id-token: write
@@ -283,6 +327,72 @@ jobs:
           echo "  OS Profile: ${{ inputs.os_profile }}"
           echo "  Package Type: ${{ inputs.native_package_type }}"
           echo "=========================================================================="
+
+      - name: Construct Repository URL and Package Name
+        id: construct-urls
+        run: |
+          # Validate repo_sub_folder for nightly builds
+          if [ "${{ env.RELEASE_TYPE }}" = "nightly" ]; then
+            if [ -z "${{ inputs.repo_sub_folder }}" ] || [ "${{ inputs.repo_sub_folder }}" = "" ]; then
+              echo "[ERROR] repo_sub_folder is required for nightly builds"
+              echo "  Release Type: ${{ env.RELEASE_TYPE }}"
+              echo "  Repository Sub Folder: ${{ inputs.repo_sub_folder }}"
+              echo ""
+              echo "For nightly builds, you must provide repo_sub_folder in the format: YYYYMMDD-RUNID"
+              echo "Example: 20260204-21658678136"
+              exit 1
+            fi
+          fi
+
+          # Set base URL based on release type
+          if [ "${{ env.RELEASE_TYPE }}" = "prerelease" ]; then
+            REPO_BASE_URL="https://rocm.prereleases.amd.com/packages"
+          else
+            REPO_BASE_URL="https://rocm.nightlies.amd.com"
+          fi
+
+          # Construct full repository URL based on release type and package type
+          # Note: For nightly RPM, the URL structure is base_url/rpm/YYYYMMDD-RUNID/x86_64/
+          # (os_profile is not included in the nightly RPM URL path)
+          if [ "${{ env.RELEASE_TYPE }}" = "nightly" ]; then
+            # Nightly builds
+            if [ "${{ inputs.native_package_type }}" = "deb" ]; then
+              # Nightly DEB: base_url/deb/YYYYMMDD-RUNID/
+              REPO_URL="${REPO_BASE_URL}/${{ inputs.native_package_type }}/${{ inputs.repo_sub_folder }}/"
+            else
+              # Nightly RPM: base_url/rpm/YYYYMMDD-RUNID/x86_64/
+              REPO_URL="${REPO_BASE_URL}/${{ inputs.native_package_type }}/${{ inputs.repo_sub_folder }}/x86_64/"
+            fi
+          else
+            # Prerelease builds
+            if [ "${{ inputs.native_package_type }}" = "deb" ]; then
+              # Prerelease DEB: base_url/os_profile
+              REPO_URL="${REPO_BASE_URL}/${{ inputs.os_profile }}"
+            else
+              # Prerelease RPM: base_url/os_profile/x86_64/
+              REPO_URL="${REPO_BASE_URL}/${{ inputs.os_profile }}/x86_64/"
+            fi
+          fi
+
+          # Construct GPG key URL (only needed for prerelease)
+          if [ "${{ env.RELEASE_TYPE }}" = "prerelease" ]; then
+            GPG_KEY_URL="${REPO_BASE_URL}/gpg/rocm.gpg"
+          else
+            GPG_KEY_URL=""
+          fi
+
+          # Export to environment variables
+          echo "REPO_URL=${REPO_URL}" >> $GITHUB_ENV
+          echo "GPG_KEY_URL=${GPG_KEY_URL}" >> $GITHUB_ENV
+
+          echo "=========================================================================="
+          echo "CONSTRUCTED URLS"
+          echo "=========================================================================="
+          echo "Repository Base URL: ${REPO_BASE_URL}"
+          echo "Full Repository URL: ${REPO_URL}"
+          echo "GPG Key URL: ${GPG_KEY_URL}"
+          echo "=========================================================================="
+
 
       - name: Full Package Installation Test
         id: full-test
