@@ -1,0 +1,348 @@
+name: Build Native Linux Packages
+
+on:
+  workflow_call:
+    inputs:
+      artifact_group:
+        description: gfx arch group for the s3 server
+        type: string
+        default: gfx94X-dcgpu
+      artifact_run_id:
+        description: workflow run id to download the artifacts from.
+        required: true
+        type: string
+      rocm_version:
+        description: ROCm version to append to the package (8.0.0, 8.0.1rc1, ...).
+        required: true
+        type: string
+      native_package_type:
+        description: Specify whether debian or rpm packages are needed (deb or rpm).
+        required: true
+        type: string
+      package_suffix:
+        description: The suffix to be added to package name (asan, tsan, static or rpath).
+        required: false
+        type: string
+      release_type:
+        description: The type of release to build ("dev", "nightly", or "prerelease"). All developer-triggered jobs should use "dev"!
+        required: false
+        type: string
+      repository:
+          description: "Repository to checkout. Otherwise, defaults to `github.repository`."
+          type: string
+      ref:
+          description: "Branch, tag or SHA to checkout. Defaults to the reference or SHA that triggered the workflow."
+          type: string
+  workflow_dispatch:
+    inputs:
+      artifact_group:
+        type: string
+        default: gfx94X-dcgpu
+      artifact_run_id:
+        description: workflow run id to download the artifacts from
+        type: string
+      rocm_version:
+        description: ROCm version to append to the package (8.0.0, 8.0.1rc1, ...).
+        type: string
+        default: "0.0.1"
+      native_package_type:
+        description: Specify whether debian or rpm packages are needed (deb or rpm).
+        required: true
+        type: choice
+        options:
+          - rpm
+          - deb
+        default: "rpm"
+      package_suffix:
+        description: The suffix to be added to package name (asan, tsan, static or rpath).
+        type: string
+        required: false
+      release_type:
+        description: The type of release to build ("dev", "nightly", or "prerelease"). All developer-triggered jobs should use "dev"!
+        type: string
+        default: "dev"
+      ref:
+          description: "Branch, tag or SHA to checkout. Defaults to the reference or SHA that triggered the workflow."
+          type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+run-name: Build native Linux packages (${{ inputs.artifact_group }}, ${{ inputs.rocm_version }}, ${{ inputs.native_package_type }}, ${{ inputs.package_suffix }}, ${{ inputs.release_type }})
+
+jobs:
+  build_native_packages:
+    name: Build Linux native Packages
+    strategy:
+      fail-fast: false
+    runs-on: ${{ github.repository_owner == 'ROCm' && 'azure-linux-scale-rocm' || 'ubuntu-24.04' }}
+    env:
+      BUILD_IMAGE: ghcr.io/rocm/therock_build_manylinux_x86_64@sha256:d6ae5712a9c7e8b88281d021e907b312cd8a26295b95690baef3e8dde4805858
+      ARTIFACT_RUN_ID: ${{ inputs.artifact_run_id || github.run_id }}
+      PACKAGE_SUFFIX: ${{ inputs.package_suffix != '' && inputs.package_suffix || '' }}
+      OUTPUT_DIR: ${{ github.workspace }}/output
+      ARTIFACTS_DIR: ${{ github.workspace }}/output/artifacts
+      PACKAGE_DIST_DIR: ${{ github.workspace }}/output/packages
+      RELEASE_TYPE: ${{ inputs.release_type || '' }}
+      S3_BUCKET_NATIVE: "therock-${{ inputs.release_type }}-packages"
+    steps:
+      - name: "Checking out repository"
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          repository: ${{ inputs.repository || github.repository }}
+          ref: ${{ inputs.ref || '' }}
+
+      - name: Set up Python
+        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+        with:
+          python-version: '3.12'
+
+      - name: Install Python requirements
+        run: |
+          pip install pyelftools boto3 jinja2
+
+      - name: Install System requirements
+        run: |
+          # Install the needed tools for creating rpm / deb packages
+          # Also install tools for creating repo files
+          sudo apt update
+          sudo apt install -y llvm
+          sudo apt install -y rpm debhelper-compat build-essential
+          sudo apt install -y dpkg-dev createrepo-c
+
+      - name: Fetch Artifacts
+        run: |
+          echo "Fetching artifacts for build ${{ inputs.artifact_run_id }}"
+          python ./build_tools/fetch_artifacts.py \
+            --run-id=${{ env.ARTIFACT_RUN_ID }} \
+            --run-github-repo=${{ github.repository }} \
+            --artifact-group=${{ inputs.artifact_group }} \
+            --output-dir=${{ env.ARTIFACTS_DIR }}
+
+      - name: Build Packages
+        id: build-packages
+        run: |
+          echo "Building ${{ inputs.native_package_type }} packages for ${{ inputs.artifact_group }} ${{ inputs.artifact_run_id }}"
+          python ./build_tools/packaging/linux/build_package.py \
+            --dest-dir ${{ env.PACKAGE_DIST_DIR }} \
+            --rocm-version  ${{ inputs.rocm_version }} \
+            --target  ${{ inputs.artifact_group }} \
+            --artifacts-dir ${{ env.ARTIFACTS_DIR }} \
+            --pkg-type ${{ inputs.native_package_type }} \
+            --version-suffix ${{ env.ARTIFACT_RUN_ID }}
+
+      - name: Test Package Simulate installation
+        id: test-packages
+        run: |
+          echo "Testing ${{ inputs.native_package_type }} package simulate installation"
+          if [ "${{ inputs.native_package_type }}" = "deb" ]; then
+            echo "Simulate installing DEB packages on host system for testing"
+            sudo apt install --simulate ${{ env.PACKAGE_DIST_DIR }}/*.deb
+          else
+            echo "Simulate installing RPM packages in Docker container for testing"
+            sudo rpm -Uvh --test --nodeps ${{ env.PACKAGE_DIST_DIR }}/*.rpm
+          fi
+
+      - name: Install AWS CLI
+        run: bash ./dockerfiles/install_awscli.sh
+
+      - name: Configure AWS Credentials for non-forked repos
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7 # v6.0.0
+        with:
+          aws-region: us-east-2
+          role-to-assume: arn:aws:iam::692859939525:role/therock-${{ inputs.release_type }}
+
+      - name: Upload Package repo to S3
+        id: upload-packages
+        run: |
+          echo "Uploading to s3 bucket : ${{ inputs.release_type }}"
+          python ./build_tools/packaging/linux/upload_package_repo.py \
+            --pkg-type ${{ inputs.native_package_type }} \
+            --s3-bucket ${{ env.S3_BUCKET_NATIVE }} \
+            --amdgpu-family ${{ inputs.artifact_group }} \
+            --artifact-id ${{ env.ARTIFACT_RUN_ID }} \
+            --job ${{ inputs.release_type }}
+
+  run_install_test:
+    name: Test - Native Linux packages (${{ inputs.os_profile }}, ${{ inputs.rocm_version }}, ${{ inputs.native_package_type }}, ${{ inputs.gfx_arch }}) 
+    runs-on: ${{ github.repository_owner == 'ROCm' && 'linux-mi325-1gpu-ossci-rocm' || 'ubuntu-24.04' }}
+    container:
+      # Use container matching the OS profile
+      # For SLES, use registry.suse.com/bci/bci-base:16.0; for DEB use Ubuntu; for other RPM use AlmaLinux
+      image: ${{ startsWith(inputs.os_profile, 'sles') && 'registry.suse.com/bci/bci-base:16.0' || (inputs.native_package_type == 'deb' && 'ubuntu:24.04' || 'almalinux:9') }}
+      options: --ipc host
+        --privileged
+    env:
+      REPO_SUB_FOLDER: ${{ inputs.repo_sub_folder }}
+      ROCM_VERSION: ${{ inputs.rocm_version }}
+      OS_PROFILE: ${{ inputs.os_profile }}
+      PACKAGE_TYPE: ${{ inputs.native_package_type }}
+      GFX_ARCH: ${{ inputs.gfx_arch || 'gfx94x' }}
+      RELEASE_TYPE: ${{ inputs.release_type || 'nightly' }}
+      INSTALL_PREFIX: ${{ inputs.install_prefix || '/opt/rocm/core' }}
+    steps:
+      - name: Install System Prerequisites
+        run: |
+          echo "Installing prerequisites for ${{ inputs.native_package_type }} on container"
+
+          if [ "${{ inputs.native_package_type }}" = "deb" ]; then
+            # Ubuntu/Debian prerequisites
+            apt update
+            apt install -y \
+              python3 \
+              python3-pip \
+              wget \
+              curl \
+              ca-certificates \
+              git \
+              lsb-release
+          elif [[ "${{ inputs.os_profile }}" == sles* ]]; then
+            # SLES prerequisites (uses zypper)
+            zypper refresh
+            zypper install -y \
+              python3 \
+              python3-pip \
+              wget \
+              curl \
+              ca-certificates \
+              git \
+              lsb-release
+          else
+            # RHEL/CentOS/AlmaLinux/AZL prerequisites
+            # Use --allowerasing to handle curl-minimal conflict on AlmaLinux 9
+            dnf install -y --allowerasing \
+              python3 \
+              python3-pip \
+              wget \
+              curl \
+              ca-certificates \
+              git \
+              dnf-plugins-core
+          fi
+
+
+      - name: Checking out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install Python Dependencies
+        run: |
+          if [ "${{ inputs.native_package_type }}" = "deb" ]; then
+            # Ubuntu/Debian: use --break-system-packages flag
+            pip3 install --break-system-packages pyelftools requests
+            pip3 install --break-system-packages prettytable PyYAML
+          else
+            # RHEL/CentOS/AlmaLinux/AZL: no --break-system-packages flag needed
+            pip3 install pyelftools requests
+            pip3 install prettytable PyYAML
+          fi
+
+      - name: Validate Package Type and OS Profile
+        run: |
+          echo "=========================================================================="
+          echo "VALIDATING PACKAGE TYPE AND OS PROFILE"
+          echo "=========================================================================="
+          echo "OS Profile: ${{ inputs.os_profile }}"
+          echo "Provided Package Type: ${{ inputs.native_package_type }}"
+          echo ""
+
+          # Derive expected package type from OS profile
+          OS_PROFILE_LOWER=$(echo "${{ inputs.os_profile }}" | tr '[:upper:]' '[:lower:]')
+          EXPECTED_PACKAGE_TYPE=""
+
+          case "$OS_PROFILE_LOWER" in
+            ubuntu*|debian*)
+              EXPECTED_PACKAGE_TYPE="deb"
+              ;;
+            rhel*|sles*|almalinux*|centos*|azl*)
+              EXPECTED_PACKAGE_TYPE="rpm"
+              ;;
+            *)
+              echo "[ERROR] Unable to derive package type from OS profile: ${{ inputs.os_profile }}"
+              echo "Supported OS profiles: ubuntu*, debian*, rhel*, sles*, almalinux*, centos*, azl*"
+              exit 1
+              ;;
+          esac
+
+          echo "Expected Package Type (derived from OS profile): $EXPECTED_PACKAGE_TYPE"
+          echo ""
+
+          # Validate that provided package type matches expected
+          if [ "${{ inputs.native_package_type }}" != "$EXPECTED_PACKAGE_TYPE" ]; then
+            echo "[ERROR] Package type mismatch!"
+            echo "  OS Profile: ${{ inputs.os_profile }}"
+            echo "  Expected Package Type: $EXPECTED_PACKAGE_TYPE"
+            echo "  Provided Package Type: ${{ inputs.native_package_type }}"
+            echo ""
+            echo "The package type must match the OS profile:"
+            echo "  - ubuntu*/debian* → deb"
+            echo "  - rhel*/sles*/almalinux*/centos*/azl* → rpm"
+            exit 1
+          fi
+
+          echo "[PASS] Package type validation successful"
+          echo "  OS Profile: ${{ inputs.os_profile }}"
+          echo "  Package Type: ${{ inputs.native_package_type }}"
+          echo "=========================================================================="
+
+      - name: Full Package Installation Test
+        id: full-test
+        run: |
+          echo "=========================================================================="
+          echo "FULL INSTALLATION TEST - NATIVE LINUX PACKAGES"
+          echo "=========================================================================="
+          echo "Package Type: ${{ inputs.native_package_type }}"
+          echo "OS Profile: ${{ inputs.os_profile }}"
+          echo "Repository Sub Folder: ${{ inputs.repo_sub_folder }}"
+          echo "Release Type: ${{ env.RELEASE_TYPE }}"
+          echo "ROCm Version: ${{ inputs.rocm_version }}"
+          echo "GPU Architecture(s) (using first): ${{ env.GFX_ARCH }}"
+          echo "Full Repository URL: ${{ env.REPO_URL }}"
+          echo "Install Prefix: ${{ env.INSTALL_PREFIX }}"
+          echo "=========================================================================="
+          echo ""
+
+          # Build command for native_linux_packages_test_no_fallback.py with minimal arguments
+          CMD="python3 build_tools/packaging/linux/native_linux_packages_test_gpg.py"
+          CMD="$CMD --os-profile ${{ inputs.os_profile }}"
+          CMD="$CMD --repo-url \"${{ env.REPO_URL }}\""
+          CMD="$CMD --gfx-arch ${{ env.GFX_ARCH }}"
+          CMD="$CMD --install-prefix \"${{ env.INSTALL_PREFIX }}\""
+          CMD="$CMD --release-type ${{ env.RELEASE_TYPE }}"
+          # Only add GPG key URL if it's set (for prerelease)
+          if [ -n "${{ env.GPG_KEY_URL }}" ]; then
+            CMD="$CMD --gpg-key-url \"${{ env.GPG_KEY_URL }}\""
+          fi
+
+          echo "Executing: $CMD"
+          echo ""
+          eval $CMD
+
+      - name: Test Report
+        if: always()
+        run: |
+          echo ""
+          echo "=========================================================================="
+          echo "FULL TEST REPORT"
+          echo "=========================================================================="
+
+          if [ "${{ steps.full-test.outcome }}" = "success" ]; then
+            echo "FULL INSTALLATION TEST PASSED"
+            echo ""
+            echo "Summary:"
+            echo "  - Release Type: ${{ env.RELEASE_TYPE }}"
+            echo "  - Repository setup: SUCCESS"
+            echo "  - Package installation from repository: SUCCESS"
+            echo "  - ROCm verification: SUCCESS"
+            echo ""
+            echo "ROCm ${{ inputs.rocm_version }} is successfully installed at ${{ env.INSTALL_PREFIX }}"
+            if [ -n "${{ env.REPO_URL }}" ]; then
+              echo "Installed from: ${{ env.REPO_URL }}"
+            fi
+          else
+            echo "FULL INSTALLATION TEST FAILED"
+            echo ""
+            echo "The test failed during repository setup or package installation."
+            echo "Please check the logs above for detailed error messages."
+            exit 1
+          fi
+          echo "=========================================================================="
