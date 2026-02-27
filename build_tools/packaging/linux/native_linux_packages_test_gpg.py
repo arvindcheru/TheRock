@@ -23,10 +23,6 @@ Prerequisites:
 - System packages: python3, pip, wget, curl; pip packages: pyelftools, requests,
   prettytable, PyYAML.
 
-Supports both nightly and prerelease builds:
-- Nightly: https://rocm.nightlies.amd.com/
-- Prerelease: https://rocm.prereleases.amd.com/packages/
-
 Example invocations:
 
   # Nightly DEB (Ubuntu 24.04) - run inside ubuntu:24.04 container or VM
@@ -1022,7 +1018,6 @@ def main():
     parser.add_argument(
         "--release-type",
         type=str,
-        required=True,
         choices=["nightly", "prerelease"],
         help="Type of release: 'nightly' or 'prerelease'",
     )
@@ -1030,7 +1025,6 @@ def main():
     parser.add_argument(
         "--install-prefix",
         type=str,
-        required=True,
         help="Installation prefix (e.g. /opt/rocm/core)",
     )
 

@@ -209,7 +209,8 @@ jobs:
             --job ${{ inputs.release_type }}
 
   run_install_test:
-    name: Test - Native Linux packages (${{ inputs.os_profile }}, ${{ inputs.rocm_version }}, ${{ inputs.native_package_type }}, ${{ inputs.gfx_arch }}) 
+    name: Test - Native Linux packages (${{ inputs.os_profile }}, ${{ inputs.rocm_version }}, ${{ inputs.native_package_type }}, ${{ inputs.gfx_arch }})
+    needs: [build_native_packages]
     runs-on: ${{ github.repository_owner == 'ROCm' && 'linux-mi325-1gpu-ossci-rocm' || 'ubuntu-24.04' }}
     container:
       # Use container matching the OS profile
