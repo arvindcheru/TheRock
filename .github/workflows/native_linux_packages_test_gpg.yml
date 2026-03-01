@@ -151,6 +151,7 @@ jobs:
 
       - name: Install Python Dependencies
         run: |
+          python -m pip install --upgrade pip
           if [ "${{ inputs.native_package_type }}" = "deb" ]; then
             # Ubuntu/Debian: use --break-system-packages flag
             pip install --break-system-packages pyelftools requests
