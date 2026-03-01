@@ -153,12 +153,12 @@ jobs:
         run: |
           if [ "${{ inputs.native_package_type }}" = "deb" ]; then
             # Ubuntu/Debian: use --break-system-packages flag
-            pip3 install --break-system-packages pyelftools requests
-            pip3 install --break-system-packages prettytable PyYAML
+            pip install --break-system-packages pyelftools requests
+            pip install --break-system-packages prettytable PyYAML
           else
             # RHEL/CentOS/AlmaLinux/AZL: no --break-system-packages flag needed
-            pip3 install pyelftools requests
-            pip3 install prettytable PyYAML
+            pip install pyelftools requests
+            pip install prettytable PyYAML
           fi
 
       - name: Validate Package Type and OS Profile
@@ -292,7 +292,7 @@ jobs:
           echo ""
 
           # Build command for native_linux_packages_test_no_fallback.py with minimal arguments
-          CMD="python3 build_tools/packaging/linux/native_linux_packages_test_gpg.py"
+          CMD="python build_tools/packaging/linux/native_linux_packages_test_gpg.py"
           CMD="$CMD --os-profile ${{ inputs.os_profile }}"
           CMD="$CMD --repo-url \"${{ env.REPO_URL }}\""
           CMD="$CMD --gfx-arch ${{ env.GFX_ARCH }}"
