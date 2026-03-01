@@ -60,6 +60,7 @@ import subprocess
 import sys
 import traceback
 from pathlib import Path
+from typing import Optional, Union
 
 
 def _env(key: str, default: str) -> str:
@@ -169,7 +170,7 @@ class NativeLinuxPackagesTester:
         os_profile: str,
         release_type: str = "nightly",
         install_prefix: Optional[str] = None,
-        gfx_arch: Optional[Union[str, List[str]]] = None,
+        gfx_arch: Optional[Union[str, list[str]]] = None,
         gpg_key_url: Optional[str] = None,
     ):
         """Initialize the package full tester.
