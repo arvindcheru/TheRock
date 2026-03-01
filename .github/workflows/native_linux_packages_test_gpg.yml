@@ -111,6 +111,9 @@ jobs:
       - name: Install System Prerequisites
         run: |
           echo "Installing prerequisites for ${{ inputs.native_package_type }} on container"
+          # Script requires Python 3.12 (for type hints: X | None). Install 3.12 and set PYTHON_BIN.
+          # Use POSIX [ ] and case so this works in sh (container default may not be bash).
+          PYTHON_BIN=python3.12
 
           if [ "${{ inputs.native_package_type }}" = "deb" ]; then
             # Ubuntu/Debian prerequisites
@@ -134,7 +137,6 @@ jobs:
               ca-certificates \
               git \
               lsb-release
-            PYTHON_BIN=python3.12
           else
             # RHEL/CentOS/AlmaLinux/AZL prerequisites
             # Use --allowerasing to handle curl-minimal conflict on AlmaLinux 9
@@ -146,19 +148,13 @@ jobs:
               ca-certificates \
               git \
               dnf-plugins-core
-            PYTHON_BIN=python3.12
           fi
           echo "PYTHON_BIN=$PYTHON_BIN" >> $GITHUB_ENV
           echo "Using interpreter: $PYTHON_BIN"
-          $PYTHON_BIN --version
+          "$PYTHON_BIN" --version
 
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
       - name: Install Python Dependencies
         run: |
           "${{ env.PYTHON_BIN }}" -m ensurepip --upgrade 2>/dev/null || true
