@@ -58,8 +58,8 @@ import argparse
 import os
 import subprocess
 import sys
+import traceback
 from pathlib import Path
-from typing import List, Optional, Union
 
 
 def _env(key: str, default: str) -> str:
@@ -129,9 +129,9 @@ class NativeLinuxPackagesTester:
         repo_url: str,
         os_profile: str,
         release_type: str = "nightly",
-        install_prefix: Optional[str] = None,
-        gfx_arch: Optional[Union[str, List[str]]] = None,
-        gpg_key_url: Optional[str] = None,
+        install_prefix: str | None = None,
+        gfx_arch: str | list[str] | None = None,
+        gpg_key_url: str | None = None,
     ):
         """Initialize the package full tester.
 
@@ -151,7 +151,7 @@ class NativeLinuxPackagesTester:
         self.install_prefix = install_prefix
         # Normalize to list; only the first element is used for now
         if gfx_arch is None:
-            self.gfx_arch_list: List[str] = ["gfx94x"]
+            self.gfx_arch_list: list[str] = ["gfx94x"]
         elif isinstance(gfx_arch, str):
             self.gfx_arch_list = [gfx_arch] if gfx_arch.strip() else ["gfx94x"]
         else:
@@ -320,7 +320,7 @@ class NativeLinuxPackagesTester:
             True if setup successful, False otherwise
         """
         repo_name = REPO_NAME
-        repo_file = os.path.join(ZYPP_REPOS_DIR, f"{repo_name}.repo")
+        repo_file = Path(ZYPP_REPOS_DIR) / f"{repo_name}.repo"
 
         # Remove existing repository if it exists
         print(f"\nRemoving existing repository '{repo_name}' if it exists...")
@@ -436,7 +436,7 @@ gpgcheck=0
         # Create repository file
         print("\nCreating ROCm repository file...")
         repo_name = REPO_NAME
-        repo_file = os.path.join(YUM_REPOS_DIR, f"{repo_name}.repo")
+        repo_file = Path(YUM_REPOS_DIR) / f"{repo_name}.repo"
 
         if self.gpg_key_url:
             # Use GPG key verification
@@ -883,8 +883,6 @@ gpgcheck=0
 
         except Exception as e:
             print(f"\n[FAIL] Error during full installation test: {e}")
-            import traceback
-
             traceback.print_exc()
             return False
 
