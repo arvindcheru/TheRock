@@ -116,6 +116,8 @@ jobs:
             # Ubuntu/Debian prerequisites
             apt update
             apt install -y \
+              python3.12 \
+              python3.12-venv \
               wget \
               curl \
               ca-certificates \
@@ -125,41 +127,45 @@ jobs:
             # SLES prerequisites (uses zypper)
             zypper refresh
             zypper install -y \
+              python312 \
+              python312-pip \
               wget \
               curl \
               ca-certificates \
               git \
               lsb-release
+            PYTHON_BIN=python3.12
           else
             # RHEL/CentOS/AlmaLinux/AZL prerequisites
             # Use --allowerasing to handle curl-minimal conflict on AlmaLinux 9
             dnf install -y --allowerasing \
+              python3.12 \
+              python3.12-pip \
               wget \
               curl \
               ca-certificates \
               git \
               dnf-plugins-core
+            PYTHON_BIN=python3.12
           fi
+          echo "PYTHON_BIN=$PYTHON_BIN" >> $GITHUB_ENV
+          echo "Using interpreter: $PYTHON_BIN"
+          $PYTHON_BIN --version
 
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-          cache: 'pip'
       - name: Install Python Dependencies
         run: |
-          python -m pip install --upgrade pip
+          "${{ env.PYTHON_BIN }}" -m ensurepip --upgrade 2>/dev/null || true
           if [ "${{ inputs.native_package_type }}" = "deb" ]; then
-            # Ubuntu/Debian: use --break-system-packages flag
-            pip install --break-system-packages pyelftools requests
-            pip install --break-system-packages prettytable PyYAML
+            "${{ env.PYTHON_BIN }}" -m pip install --break-system-packages pyelftools requests prettytable PyYAML
           else
-            # RHEL/CentOS/AlmaLinux/AZL: no --break-system-packages flag needed
-            pip install pyelftools requests
-            pip install prettytable PyYAML
+            "${{ env.PYTHON_BIN }}" -m pip install pyelftools requests prettytable PyYAML
           fi
 
       - name: Validate Package Type and OS Profile
@@ -293,7 +299,7 @@ jobs:
           echo ""
 
           # Build command for native_linux_packages_test_no_fallback.py with minimal arguments
-          CMD="python build_tools/packaging/linux/native_linux_packages_test_gpg.py"
+          CMD="${{ env.PYTHON_BIN }} build_tools/packaging/linux/native_linux_packages_test_gpg.py"
           CMD="$CMD --os-profile ${{ inputs.os_profile }}"
           CMD="$CMD --repo-url \"${{ env.REPO_URL }}\""
           CMD="$CMD --gfx-arch ${{ env.GFX_ARCH }}"
