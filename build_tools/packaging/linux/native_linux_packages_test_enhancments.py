@@ -6,7 +6,7 @@
 Full installation test script for ROCm native packages.
 
 This script sets up the package-manager repository, installs ROCm native packages
-(amdrocm-{gfx_arch}), and verifies the installation. URL generation and package
+(amdrocm-{gfx_arch}, amdrocm-core-sdk-{gfx_arch}), and verifies the installation. URL generation and package
 name construction are delegated to the YAML workflow when run from CI.
 
 Path and repo name are overridable via environment variables: ROCM_REPO_NAME (repo id used for
@@ -89,6 +89,10 @@ VERIFY_KEY_COMPONENTS = [
 # Relative path from install prefix to rdhc binary (script); overridable via ROCM_RDHC_REL_PATH
 RDHC_REL_PATH = _env("ROCM_RDHC_REL_PATH", "libexec/rocm-core/rdhc.py")
 
+# Shell commands for info tools (run from PATH; no install prefix)
+ROCMINFO_CMD = 'rocminfo | grep -i "Marketing Name:"'
+CLINFO_CMD = 'clinfo | grep -i "Board name:"'
+
 
 class NativeLinuxPackagesTester:
     """Full installation tester for ROCm native Linux packages."""
@@ -161,8 +165,11 @@ class NativeLinuxPackagesTester:
         self.gfx_arch = self.gfx_arch_list[0].lower()
         self.gpg_key_url = gpg_key_url
 
-        # Construct package name from first gfx_arch (only first element used for now)
-        self.package_name = f"amdrocm-{self.gfx_arch}"
+        # Packages to install, in order
+        self.package_names = [
+            f"amdrocm-{self.gfx_arch}",
+            f"amdrocm-core-sdk-{self.gfx_arch}",
+        ]
 
     def setup_gpg_key(self) -> bool:
         """Setup GPG key for repositories that require GPG verification.
@@ -520,10 +527,10 @@ gpgcheck=0
         print("INSTALLING DEB PACKAGES FROM REPOSITORY")
         print("=" * 80)
 
-        print(f"\nPackage to install: {self.package_name}")
+        print(f"\nPackages to install (in order): {self.package_names}")
 
-        # Install using apt
-        cmd = ["apt", "install", "-y", self.package_name]
+        # Install using apt (packages in list order)
+        cmd = ["apt", "install", "-y"] + self.package_names
         print(f"\nRunning: {' '.join(cmd)}")
         print("=" * 80)
         print("Installation progress (streaming output):\n")
@@ -579,7 +586,7 @@ gpgcheck=0
         print("INSTALLING RPM PACKAGES FROM REPOSITORY")
         print("=" * 80)
 
-        print(f"\nPackage to install: {self.package_name}")
+        print(f"\nPackages to install (in order): {self.package_names}")
 
         # Use zypper for SLES, dnf for others
         if self._is_sles():
@@ -591,8 +598,7 @@ gpgcheck=0
                     "--no-gpg-checks",
                     "install",
                     "-y",
-                    self.package_name,
-                ]
+                ] + self.package_names
             else:
                 # If GPG key URL is provided, use --gpg-auto-import-keys to automatically import and trust GPG keys
                 cmd = [
@@ -601,11 +607,10 @@ gpgcheck=0
                     "--gpg-auto-import-keys",
                     "install",
                     "-y",
-                    self.package_name,
-                ]
+                ] + self.package_names
             print("[INFO] Using zypper for SLES package installation")
         else:
-            cmd = ["dnf", "install", "-y", self.package_name]
+            cmd = ["dnf", "install", "-y"] + self.package_names
         print(f"\nRunning: {' '.join(cmd)}")
         print("=" * 80)
         print("Installation progress (streaming output):\n")
@@ -727,35 +732,42 @@ gpgcheck=0
         except subprocess.CalledProcessError as e:
             print(f"   [WARN] Could not query installed packages")
 
-        # Try to run rocminfo if available
-        rocminfo_path = install_path / "bin" / "rocminfo"
-        if rocminfo_path.exists():
-            print("\nTrying to run rocminfo...")
-            try:
-                result = subprocess.run(
-                    [str(rocminfo_path)],
-                    check=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    timeout=30,
-                )
+        # Try to run ROCMINFO_CMD
+        print(f"\nTrying to run {ROCMINFO_CMD}...")
+        try:
+            result = subprocess.run(
+                ROCMINFO_CMD,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode == 0:
                 print("   [PASS] rocminfo executed successfully")
-                # Print first few lines of output
-                lines = result.stdout.split("\n")[:10]
-                print("\n   First few lines of rocminfo output:")
-                for line in lines:
-                    if line.strip():
-                        print(f"      {line}")
-            except subprocess.TimeoutExpired:
-                print("   [WARN] rocminfo timed out (may require GPU hardware)")
-            except subprocess.CalledProcessError as e:
-                print(f"   [WARN] rocminfo failed (may require GPU hardware)")
-            except Exception as e:
-                print(f"   [WARN] Could not run rocminfo: {e}")
+                if result.stdout:
+                    print("\n   Marketing Name(s):")
+                    for line in result.stdout.split("\n"):
+                        if line.strip():
+                            print(f"      {line.strip()}")
+            else:
+                print(f"   [WARN] rocminfo/grep exited with code {result.returncode}")
+                if result.stdout:
+                    for line in result.stdout.split("\n")[:5]:
+                        if line.strip():
+                            print(f"      {line}")
+        except FileNotFoundError:
+            print("   [WARN] rocminfo not found in PATH")
+        except subprocess.TimeoutExpired:
+            print("   [WARN] rocminfo timed out (may require GPU hardware)")
+        except Exception as e:
+            print(f"   [WARN] Could not run rocminfo: {e}")
 
         # Test rdhc.py if available
         self.test_rdhc()
+
+        # Test clinfo (run directly from PATH, no install prefix)
+        self.test_clinfo()
 
         # Return success if at least some components were found
         if found_count >= 2:  # Require at least 2 key components
@@ -826,6 +838,51 @@ gpgcheck=0
             print(f"   [WARN] Could not run rdhc.py: {e}")
             return False
 
+    def test_clinfo(self) -> bool:
+        """Run CLINFO_CMD.
+
+        Returns:
+            True if clinfo ran successfully, False otherwise.
+        """
+        print("\n" + "=" * 80)
+        print("TESTING CLINFO")
+        print("=" * 80)
+
+        print(f"\nTrying to run {CLINFO_CMD}...")
+        try:
+            result = subprocess.run(
+                CLINFO_CMD,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode == 0:
+                print("\n[PASS] clinfo executed successfully")
+                if result.stdout:
+                    print("\n   Board name(s):")
+                    for line in result.stdout.split("\n"):
+                        if line.strip():
+                            print(f"      {line.strip()}")
+                return True
+            else:
+                print(f"\n[WARN] clinfo/grep exited with code {result.returncode}")
+                if result.stdout:
+                    for line in result.stdout.split("\n")[:5]:
+                        if line.strip():
+                            print(f"      {line}")
+                return False
+        except FileNotFoundError:
+            print("\n[WARN] clinfo not found in PATH")
+            return False
+        except subprocess.TimeoutExpired:
+            print("\n[WARN] clinfo timed out")
+            return False
+        except Exception as e:
+            print(f"\n[WARN] Could not run clinfo: {e}")
+            return False
+
     def run(self) -> bool:
         """Execute the full installation test process.
 
@@ -842,7 +899,7 @@ gpgcheck=0
         print(
             f"GPU Architecture(s): {self.gfx_arch_list} (using first: {self.gfx_arch})"
         )
-        print(f"Package Name: {self.package_name}")
+        print(f"Packages (in order): {self.package_names}")
         print(f"Install Prefix: {self.install_prefix}")
 
         try:

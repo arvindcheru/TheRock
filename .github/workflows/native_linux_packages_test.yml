@@ -19,7 +19,7 @@ on:
         required: true
         type: string
       gfx_arch:
-        description: GPU architecture (e.g., gfx94x, gfx110x, gfx1151).
+        description: GPU architectures (e.g., gfx94x gfx110x gfx1151). Space-separated list supported; script uses first only for now.
         type: string
       release_type:
         description: The type of release to test ("nightly" or "prerelease").
@@ -64,7 +64,7 @@ on:
           - centos7
           - azl3
       gfx_arch:
-        description: GPU architecture (e.g., gfx94x, gfx110x, gfx1151).
+        description: GPU architectures (e.g., gfx94x gfx110x gfx1151). Space-separated list supported; script uses first only for now.
         type: string
         default: "gfx94x"
       release_type:
@@ -286,7 +286,7 @@ jobs:
           echo "Repository Sub Folder: ${{ inputs.repo_sub_folder }}"
           echo "Release Type: ${{ env.RELEASE_TYPE }}"
           echo "ROCm Version: ${{ inputs.rocm_version }}"
-          echo "GPU Architecture: ${{ env.GFX_ARCH }}"
+          echo "GPU Architecture(s) (using first): ${{ env.GFX_ARCH }}"
           echo "Full Repository URL: ${{ env.REPO_URL }}"
           echo "Install Prefix: ${{ env.INSTALL_PREFIX }}"
           echo "=========================================================================="
