@@ -168,9 +168,9 @@ class NativeLinuxPackagesTester:
         repo_url: str,
         os_profile: str,
         release_type: str = "nightly",
-        install_prefix: str | None = None,
-        gfx_arch: str | list[str] | None = None,
-        gpg_key_url: str | None = None,
+        install_prefix: Optional[str] = None,
+        gfx_arch: Optional[Union[str, List[str]]] = None,
+        gpg_key_url: Optional[str] = None,
     ):
         """Initialize the package full tester.
 
