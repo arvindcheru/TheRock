@@ -408,6 +408,8 @@ gpgcheck=0
         # Refresh repository metadata
         print("\nRefreshing repository metadata...")
         try:
+            # Use --non-interactive to avoid prompts
+            # If GPG key URL is provided, use --gpg-auto-import-keys to automatically import and trust GPG keys
             refresh_cmd = ["zypper", "--non-interactive"]
             if self.gpg_key_url:
                 refresh_cmd.append("--gpg-auto-import-keys")
@@ -548,7 +550,7 @@ gpgcheck=0
             return False
         except subprocess.TimeoutExpired:
             print("\n" + "=" * 80)
-            print(f"[FAIL] Installation timed out after {INSTALL_TIMEOUT_SEC // 60} minutes")
+            print(f"[FAIL] Installation timed out after {INSTALL_TIMEOUT_SEC} minutes")
             return False
         except OSError as e:
             print(f"\n[FAIL] Error during installation: {e}")
@@ -606,7 +608,7 @@ gpgcheck=0
             return False
         except subprocess.TimeoutExpired:
             print("\n" + "=" * 80)
-            print(f"[FAIL] Installation timed out after {INSTALL_TIMEOUT_SEC // 60} minutes")
+            print(f"[FAIL] Installation timed out after {INSTALL_TIMEOUT_SEC} minutes")
             return False
         except OSError as e:
             print(f"\n[FAIL] Error during installation: {e}")

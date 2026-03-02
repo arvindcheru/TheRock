@@ -60,6 +60,7 @@ import subprocess
 import sys
 import traceback
 from pathlib import Path
+from typing import Optional, Union
 
 
 def _env(key: str, default: str) -> str:
@@ -88,6 +89,20 @@ VERIFY_KEY_COMPONENTS = [
 ]
 # Relative path from install prefix to rdhc binary (script); overridable via ROCM_RDHC_REL_PATH
 RDHC_REL_PATH = _env("ROCM_RDHC_REL_PATH", "libexec/rocm-core/rdhc.py")
+
+# Timeouts (seconds) and verification threshold
+GPG_MKDIR_TIMEOUT_SEC = 10
+GPG_KEY_TIMEOUT_SEC = 60
+APT_UPDATE_TIMEOUT_SEC = 120
+ZYPP_CLEAN_TIMEOUT_SEC = 60
+ZYPP_REFRESH_TIMEOUT_SEC = 120
+DNF_CLEAN_TIMEOUT_SEC = 60
+INSTALL_TIMEOUT_SEC = 1800  # 30 minutes
+ROCMINFO_TIMEOUT_SEC = 30
+RDHC_TIMEOUT_SEC = 30
+VERIFY_MIN_COMPONENTS = 2
+
+
 
 
 class NativeLinuxPackagesTester:
@@ -129,9 +144,9 @@ class NativeLinuxPackagesTester:
         repo_url: str,
         os_profile: str,
         release_type: str = "nightly",
-        install_prefix: str | None = None,
-        gfx_arch: str | list[str] | None = None,
-        gpg_key_url: str | None = None,
+        install_prefix: Optional[str] = None,
+        gfx_arch: Optional[Union[str, list[str]]] = None,
+        gpg_key_url: Optional[str] = None,
     ):
         """Initialize the package full tester.
 
@@ -192,7 +207,7 @@ class NativeLinuxPackagesTester:
                     check=True,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    timeout=10,
+                    timeout=GPG_MKDIR_TIMEOUT_SEC,
                 )
                 print(f"[PASS] Created keyring directory: {keyring_dir}")
 
@@ -211,7 +226,7 @@ class NativeLinuxPackagesTester:
                     check=True,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    timeout=60,
+                    timeout=GPG_KEY_TIMEOUT_SEC,
                 )
 
                 # Set proper permissions on the keyring file
@@ -292,7 +307,7 @@ class NativeLinuxPackagesTester:
                 sys.stdout.flush()  # Ensure immediate display
 
             # Wait for process to complete
-            return_code = process.wait(timeout=120)
+            return_code = process.wait(timeout=APT_UPDATE_TIMEOUT_SEC)
 
             if return_code == 0:
                 print("\n[PASS] Package lists updated")
@@ -366,7 +381,7 @@ gpgcheck=0
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                timeout=60,
+                timeout=ZYPP_CLEAN_TIMEOUT_SEC,
             )
             if result.returncode == 0:
                 print("[PASS] zypper cache cleaned")
@@ -404,7 +419,7 @@ gpgcheck=0
                 sys.stdout.flush()  # Ensure immediate display
 
             # Wait for process to complete
-            return_code = process.wait(timeout=120)
+            return_code = process.wait(timeout=ZYPP_REFRESH_TIMEOUT_SEC)
 
             if return_code == 0:
                 print("\n[PASS] Repository metadata refreshed")
@@ -472,7 +487,7 @@ gpgcheck=0
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                timeout=60,
+                timeout=DNF_CLEAN_TIMEOUT_SEC,
             )
             print("[PASS] dnf cache cleaned")
         except subprocess.CalledProcessError as e:
@@ -547,7 +562,7 @@ gpgcheck=0
                 sys.stdout.flush()  # Ensure immediate display
 
             # Wait for process to complete
-            return_code = process.wait(timeout=1800)  # 30 minute timeout
+            return_code = process.wait(timeout=INSTALL_TIMEOUT_SEC)  # 30 minute timeout
 
             if return_code == 0:
                 print("\n" + "=" * 80)
@@ -563,7 +578,7 @@ gpgcheck=0
         except subprocess.TimeoutExpired:
             process.kill()
             print("\n" + "=" * 80)
-            print("[FAIL] Installation timed out after 30 minutes")
+            print(f"[FAIL] Installation timed out after {INSTALL_TIMEOUT_SEC} minutes")
             return False
         except Exception as e:
             print(f"\n[FAIL] Error during installation: {e}")
@@ -629,7 +644,7 @@ gpgcheck=0
                 sys.stdout.flush()  # Ensure immediate display
 
             # Wait for process to complete
-            return_code = process.wait(timeout=1800)  # 30 minute timeout
+            return_code = process.wait(timeout=INSTALL_TIMEOUT_SEC)  # 30 minute timeout
 
             if return_code == 0:
                 print("\n" + "=" * 80)
@@ -645,7 +660,7 @@ gpgcheck=0
         except subprocess.TimeoutExpired:
             process.kill()
             print("\n" + "=" * 80)
-            print("[FAIL] Installation timed out after 30 minutes")
+            print(f"[FAIL] Installation timed out after {INSTALL_TIMEOUT_SEC} minutes")
             return False
         except Exception as e:
             print(f"\n[FAIL] Error during installation: {e}")
@@ -738,7 +753,7 @@ gpgcheck=0
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
-                    timeout=30,
+                    timeout=ROCMINFO_TIMEOUT_SEC,
                 )
                 print("   [PASS] rocminfo executed successfully")
                 # Print first few lines of output
@@ -758,7 +773,7 @@ gpgcheck=0
         self.test_rdhc()
 
         # Return success if at least some components were found
-        if found_count >= 2:  # Require at least 2 key components
+        if found_count >= VERIFY_MIN_COMPONENTS:
             print("\n[PASS] ROCm installation verification PASSED")
             return True
         else:
@@ -805,7 +820,7 @@ gpgcheck=0
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                timeout=30,
+                timeout=RDHC_TIMEOUT_SEC,
             )
             print("   [PASS] rdhc.py executed successfully with --all")
             if result.stdout:

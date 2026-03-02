@@ -60,6 +60,7 @@ import subprocess
 import sys
 import traceback
 from pathlib import Path
+from typing import Optional, Union
 
 
 def _env(key: str, default: str) -> str:
@@ -102,6 +103,29 @@ RDHC_TIMEOUT_SEC = 30
 VERIFY_MIN_COMPONENTS = 2
 
 
+def _run_streaming(cmd: list[str], timeout_sec: int) -> int:
+    """Run a command with streaming stdout/stderr and return its exit code.
+
+    Lines are printed as they are produced. Raises subprocess.TimeoutExpired
+    (after killing the process) or OSError on failure.
+    """
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    try:
+        for line in process.stdout:
+            print(line.rstrip())
+            sys.stdout.flush()
+        return process.wait(timeout=timeout_sec)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        raise
+
+
 class NativeLinuxPackagesTester:
     """Full installation tester for ROCm native Linux packages."""
 
@@ -141,9 +165,9 @@ class NativeLinuxPackagesTester:
         repo_url: str,
         os_profile: str,
         release_type: str = "nightly",
-        install_prefix: str | None = None,
-        gfx_arch: str | list[str] | None = None,
-        gpg_key_url: str | None = None,
+        install_prefix: Optional[str] = None,
+        gfx_arch: Optional[Union[str, list[str]]] = None,
+        gpg_key_url: Optional[str] = None,
     ):
         """Initialize the package full tester.
 
@@ -239,7 +263,7 @@ class NativeLinuxPackagesTester:
                 if e.stderr:
                     print(f"Error output: {e.stderr.decode()}")
                 return False
-            except Exception as e:
+            except OSError as e:
                 print(f"[FAIL] Error setting up GPG key: {e}")
                 return False
         else:  # rpm
@@ -283,7 +307,7 @@ class NativeLinuxPackagesTester:
                 f.write(repo_entry)
             print(f"[PASS] Repository added to {sources_list}")
             print(f"       {repo_entry.strip()}")
-        except Exception as e:
+        except OSError as e:
             print(f"[FAIL] Failed to add repository: {e}")
             return False
 
@@ -291,37 +315,20 @@ class NativeLinuxPackagesTester:
         print("\nUpdating package lists...")
         print("=" * 80)
         try:
-            # Use Popen to stream output in real-time
-            process = subprocess.Popen(
-                ["apt", "update"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,  # Line buffered
+            return_code = _run_streaming(
+                ["apt", "update"], APT_UPDATE_TIMEOUT_SEC
             )
-
-            # Stream output line by line
-            for line in process.stdout:
-                line = line.rstrip()
-                print(line)  # Print immediately
-                sys.stdout.flush()  # Ensure immediate display
-
-            # Wait for process to complete
-            return_code = process.wait(timeout=APT_UPDATE_TIMEOUT_SEC)
-
             if return_code == 0:
                 print("\n[PASS] Package lists updated")
                 return True
-            else:
-                print(
-                    f"\n[FAIL] Failed to update package lists (exit code: {return_code})"
-                )
-                return False
-        except subprocess.TimeoutExpired:
-            process.kill()
-            print(f"\n[FAIL] apt update timed out")
+            print(
+                f"\n[FAIL] Failed to update package lists (exit code: {return_code})"
+            )
             return False
-        except Exception as e:
+        except subprocess.TimeoutExpired:
+            print("\n[FAIL] apt update timed out")
+            return False
+        except OSError as e:
             print(f"[FAIL] Error updating package lists: {e}")
             return False
 
@@ -369,7 +376,7 @@ gpgcheck=0
             print(f"[PASS] Repository file created: {repo_file}")
             print(f"\nRepository configuration:")
             print(repo_content)
-        except Exception as e:
+        except OSError as e:
             print(f"[FAIL] Failed to create repository file: {e}")
             return False
 
@@ -391,7 +398,7 @@ gpgcheck=0
                 )
         except subprocess.TimeoutExpired:
             print(f"[WARN] zypper clean timed out (may not be critical)")
-        except Exception as e:
+        except (subprocess.CalledProcessError, OSError) as e:
             print(f"[WARN] zypper clean failed: {e} (may not be critical)")
 
         # Refresh repository metadata
@@ -402,38 +409,21 @@ gpgcheck=0
             refresh_cmd = ["zypper", "--non-interactive"]
             if self.gpg_key_url:
                 refresh_cmd.append("--gpg-auto-import-keys")
-            refresh_cmd.append("refresh")
-            refresh_cmd.append(repo_name)
-            process = subprocess.Popen(
-                refresh_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,  # Line buffered
+            refresh_cmd.extend(["refresh", repo_name])
+            return_code = _run_streaming(
+                refresh_cmd, ZYPP_REFRESH_TIMEOUT_SEC
             )
-
-            # Stream output line by line
-            for line in process.stdout:
-                line = line.rstrip()
-                print(line)  # Print immediately
-                sys.stdout.flush()  # Ensure immediate display
-
-            # Wait for process to complete
-            return_code = process.wait(timeout=ZYPP_REFRESH_TIMEOUT_SEC)
-
             if return_code == 0:
                 print("\n[PASS] Repository metadata refreshed")
                 return True
-            else:
-                print(
-                    f"\n[FAIL] Failed to refresh repository metadata (exit code: {return_code})"
-                )
-                return False
-        except subprocess.TimeoutExpired:
-            process.kill()
-            print(f"\n[FAIL] zypper refresh timed out")
+            print(
+                f"\n[FAIL] Failed to refresh repository metadata (exit code: {return_code})"
+            )
             return False
-        except Exception as e:
+        except subprocess.TimeoutExpired:
+            print("\n[FAIL] zypper refresh timed out")
+            return False
+        except OSError as e:
             print(f"[FAIL] Error refreshing repository metadata: {e}")
             return False
 
@@ -474,7 +464,7 @@ gpgcheck=0
             print(f"[PASS] Repository file created: {repo_file}")
             print(f"\nRepository configuration:")
             print(repo_content)
-        except Exception as e:
+        except OSError as e:
             print(f"[FAIL] Failed to create repository file: {e}")
             return False
 
@@ -544,43 +534,21 @@ gpgcheck=0
         print("Installation progress (streaming output):\n")
 
         try:
-            # Use Popen to stream output in real-time
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,  # Line buffered
-            )
-
-            # Stream output line by line
-            output_lines = []
-            for line in process.stdout:
-                line = line.rstrip()
-                print(line)  # Print immediately
-                output_lines.append(line)
-                sys.stdout.flush()  # Ensure immediate display
-
-            # Wait for process to complete
-            return_code = process.wait(timeout=INSTALL_TIMEOUT_SEC)
-
+            return_code = _run_streaming(cmd, INSTALL_TIMEOUT_SEC)
             if return_code == 0:
                 print("\n" + "=" * 80)
                 print("[PASS] DEB packages installed successfully from repository")
                 return True
-            else:
-                print("\n" + "=" * 80)
-                print(
-                    f"[FAIL] Failed to install DEB packages (exit code: {return_code})"
-                )
-                return False
-
-        except subprocess.TimeoutExpired:
-            process.kill()
             print("\n" + "=" * 80)
-            print("[FAIL] Installation timed out after 30 minutes")
+            print(
+                f"[FAIL] Failed to install DEB packages (exit code: {return_code})"
+            )
             return False
-        except Exception as e:
+        except subprocess.TimeoutExpired:
+            print("\n" + "=" * 80)
+            print(f"[FAIL] Installation timed out after {INSTALL_TIMEOUT_SEC} minutes")
+            return False
+        except OSError as e:
             print(f"\n[FAIL] Error during installation: {e}")
             return False
 
@@ -624,43 +592,21 @@ gpgcheck=0
         print("Installation progress (streaming output):\n")
 
         try:
-            # Use Popen to stream output in real-time
-            process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,  # Line buffered
-            )
-
-            # Stream output line by line
-            output_lines = []
-            for line in process.stdout:
-                line = line.rstrip()
-                print(line)  # Print immediately
-                output_lines.append(line)
-                sys.stdout.flush()  # Ensure immediate display
-
-            # Wait for process to complete
-            return_code = process.wait(timeout=INSTALL_TIMEOUT_SEC)
-
+            return_code = _run_streaming(cmd, INSTALL_TIMEOUT_SEC)
             if return_code == 0:
                 print("\n" + "=" * 80)
                 print("[PASS] RPM packages installed successfully from repository")
                 return True
-            else:
-                print("\n" + "=" * 80)
-                print(
-                    f"[FAIL] Failed to install RPM packages (exit code: {return_code})"
-                )
-                return False
-
-        except subprocess.TimeoutExpired:
-            process.kill()
             print("\n" + "=" * 80)
-            print("[FAIL] Installation timed out after 30 minutes")
+            print(
+                f"[FAIL] Failed to install RPM packages (exit code: {return_code})"
+            )
             return False
-        except Exception as e:
+        except subprocess.TimeoutExpired:
+            print("\n" + "=" * 80)
+            print(f"[FAIL] Installation timed out after {INSTALL_TIMEOUT_SEC} minutes")
+            return False
+        except OSError as e:
             print(f"\n[FAIL] Error during installation: {e}")
             return False
 
@@ -763,8 +709,8 @@ gpgcheck=0
             except subprocess.TimeoutExpired:
                 print("   [WARN] rocminfo timed out (may require GPU hardware)")
             except subprocess.CalledProcessError as e:
-                print(f"   [WARN] rocminfo failed (may require GPU hardware)")
-            except Exception as e:
+                print("   [WARN] rocminfo failed (may require GPU hardware)")
+            except OSError as e:
                 print(f"   [WARN] Could not run rocminfo: {e}")
 
         # Test rdhc.py if available
@@ -835,7 +781,7 @@ gpgcheck=0
         except subprocess.CalledProcessError:
             print("   [WARN] rdhc.py --all failed")
             return False
-        except Exception as e:
+        except OSError as e:
             print(f"   [WARN] Could not run rdhc.py: {e}")
             return False
 
