@@ -119,6 +119,7 @@ jobs:
       GFX_ARCH: ${{ inputs.gfx_arch || 'gfx94x' }}
       RELEASE_TYPE: ${{ inputs.release_type || 'nightly' }}
       INSTALL_PREFIX: ${{ inputs.install_prefix || '/opt/rocm/core' }}
+      TEST_TYPE: ${{ inputs.test_type || 'sanity' }}
     steps:
       - name: Install System Prerequisites
         run: |
