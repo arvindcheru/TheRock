@@ -637,7 +637,7 @@ gpgcheck=0
         print(f"\nOS Profile: {self.os_profile}")
         print(f"Package Type (derived): {self.package_type.upper()}")
         print(f"Repository URL: {self.repo_url}")
-        print(f"Packages (in order): {self.package_names}")
+        print(f"Packages (in order): {self.package_name}")
 
         if self.package_type == "deb":
             if not self.setup_deb_repository():
