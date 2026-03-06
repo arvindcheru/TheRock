@@ -673,7 +673,9 @@ gpgcheck=0
             if (install_path / component).exists():
                 found_count += 1
 
-        print(f"Key components found: {found_count}/{len(VERIFY_KEY_COMPONENTS)} (minimum required: {VERIFY_MIN_COMPONENTS})")
+        print(
+            f"Key components found: {found_count}/{len(VERIFY_KEY_COMPONENTS)} (minimum required: {VERIFY_MIN_COMPONENTS})"
+        )
 
         if found_count >= VERIFY_MIN_COMPONENTS:
             print("\n[PASS] Basic verification PASSED")
@@ -694,10 +696,6 @@ gpgcheck=0
 
     def verify_rocm_installation(self) -> bool:
         """Verify that ROCm is properly installed (detailed: components, packages, rocminfo, rdhc).
-
-        Returns:
-            True if verification successful, False otherwise
-        """
 
         Returns:
             True if verification successful, False otherwise
@@ -870,6 +868,7 @@ gpgcheck=0
         except OSError as e:
             print(f"   [WARN] Could not run rdhc.py: {e}")
             return False
+
 
 def main():
     """Main entry point for the Native Linux Package Installation Test script."""
