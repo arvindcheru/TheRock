@@ -30,6 +30,11 @@ on:
         required: false
         type: string
         default: "/opt/rocm/core"
+      test_type:
+        description: "Test type: sanity (basic verification only) or full (basic + full verification)."
+        required: false
+        type: string
+        default: "sanity"
   workflow_dispatch:
     inputs:
       repo_sub_folder:
@@ -79,6 +84,13 @@ on:
         type: string
         default: "/opt/rocm/core"
         required: false
+      test_type:
+        description: "Test type: sanity or full"
+        type: choice
+        options:
+          - sanity
+          - full
+        default: "sanity"
 
 permissions:
   id-token: write
@@ -297,6 +309,7 @@ jobs:
           CMD="$CMD --gfx-arch ${{ env.GFX_ARCH }}"
           CMD="$CMD --install-prefix \"${{ env.INSTALL_PREFIX }}\""
           CMD="$CMD --release-type ${{ env.RELEASE_TYPE }}"
+          CMD="$CMD --test-type ${{ env.TEST_TYPE }}"
           # Only add GPG key URL if it's set (for prerelease)
           if [ -n "${{ env.GPG_KEY_URL }}" ]; then
             CMD="$CMD --gpg-key-url \"${{ env.GPG_KEY_URL }}\""

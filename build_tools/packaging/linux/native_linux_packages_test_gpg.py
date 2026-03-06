@@ -944,6 +944,13 @@ Examples:
         type=str,
         help="GPG key URL",
     )
+    parser.add_argument(
+        "--test-type",
+        type=str,
+        choices=["sanity", "full"],
+        default="sanity",
+        help="Test type: 'sanity' runs only basic verification; 'full' runs basic + full verification.",
+    )
 
     args = parser.parse_args()
 
@@ -965,6 +972,7 @@ Examples:
     print(f"Repository URL: {args.repo_url}")
     print(f"GPU Architecture(s): {args.gfx_arch} (using first: {args.gfx_arch[0]})")
     print(f"Install Prefix: {args.install_prefix}")
+    print(f"Test Type: {args.test_type}")
     if args.gpg_key_url:
         print(f"GPG Key URL: {args.gpg_key_url}")
     print("=" * 80)
@@ -984,6 +992,7 @@ Examples:
     print("=" * 80)
     print(f"Release Type: {tester.release_type.upper()}")
     print(f"Install Prefix: {tester.install_prefix}")
+    print(f"Test Type: {args.test_type}")
     print("=" * 80)
 
     try:
@@ -997,14 +1006,19 @@ Examples:
             print("\n[FAIL] Step 2 (basic verification) failed.")
             sys.exit(1)
 
-        # 3. Detailed / full verification
-        if not tester.run_full_verification():
-            print("\n[FAIL] Step 3 (full verification) failed.")
-            sys.exit(1)
+        # 3. Full verification only when test_type is "full"
+        if args.test_type == "full":
+            if not tester.run_full_verification():
+                print("\n[FAIL] Step 3 (full verification) failed.")
+                sys.exit(1)
 
         print("\n" + "=" * 80)
         print("[PASS] INSTALLATION TEST PASSED")
-        print("ROCm has been successfully installed from repository and verified!")
+        print("ROCm has been successfully installed from repository!")
+        if args.test_type == "sanity":
+            print("(sanity: basic verification completed)")
+        else:
+            print("(Full verification completed)")
         print("=" * 80 + "\n")
         sys.exit(0)
     except Exception as e:
