@@ -6,7 +6,7 @@
 Full installation test script for ROCm native packages.
 
 This script sets up the package-manager repository, installs ROCm native packages
-(amdrocm-{gfx_arch}, amdrocm-core-sdk-{gfx_arch}), and verifies the installation. URL generation and package
+(amdrocm-{gfx_arch}), and verifies the installation. URL generation and package
 name construction are delegated to the YAML workflow when run from CI.
 
 Path and repo name are overridable via environment variables: ROCM_REPO_NAME (repo id used for
@@ -197,11 +197,8 @@ class NativeLinuxPackagesTester:
         self.gfx_arch = self.gfx_arch_list[0].lower()
         self.gpg_key_url = gpg_key_url
 
-        # Packages to install, in order
-        self.package_names = [
-            f"amdrocm-{self.gfx_arch}",
-            f"amdrocm-core-sdk-{self.gfx_arch}",
-        ]
+        # Construct package name from first gfx_arch (only first element used for now)
+        self.package_name = f"amdrocm-{self.gfx_arch}"
 
     def setup_gpg_key(self) -> bool:
         """Setup GPG key for repositories that require GPG verification.
@@ -519,10 +516,10 @@ gpgcheck=0
         print("INSTALLING DEB PACKAGES FROM REPOSITORY")
         print("=" * 80)
 
-        print(f"\nPackages to install (in order): {self.package_names}")
+        print(f"\nPackage to install: {self.package_name}")
 
-        # Install using apt (packages in list order)
-        cmd = ["apt", "install", "-y"] + self.package_names
+        # Install using apt
+        cmd = ["apt", "install", "-y", self.package_name]
         print(f"\nRunning: {' '.join(cmd)}")
         print("=" * 80)
         print("Installation progress (streaming output):\n")
@@ -554,7 +551,7 @@ gpgcheck=0
         print("INSTALLING RPM PACKAGES FROM REPOSITORY")
         print("=" * 80)
 
-        print(f"\nPackages to install (in order): {self.package_names}")
+        print(f"\nPackage to install: {self.package_name}")
 
         # Use zypper for SLES, dnf for others
         if self._is_sles():
@@ -566,7 +563,8 @@ gpgcheck=0
                     "--no-gpg-checks",
                     "install",
                     "-y",
-                ] + self.package_names
+                    self.package_name,
+                ]
             else:
                 # If GPG key URL is provided, use --gpg-auto-import-keys to automatically import and trust GPG keys
                 cmd = [
@@ -575,7 +573,8 @@ gpgcheck=0
                     "--gpg-auto-import-keys",
                     "install",
                     "-y",
-                ] + self.package_names
+                    self.package_name,
+                ]
             print("[INFO] Using zypper for SLES package installation")
             # Install update-alternatives (required for SLES) before ROCm packages
             print("\nInstalling update-alternatives (SLES prerequisite)...")
@@ -598,7 +597,7 @@ gpgcheck=0
                     f"[WARN] Could not install update-alternatives: {e} (continuing anyway)"
                 )
         else:
-            cmd = ["dnf", "install", "-y"] + self.package_names
+            cmd = ["dnf", "install", "-y", self.package_name]
         print(f"\nRunning: {' '.join(cmd)}")
         print("=" * 80)
         print("Installation progress (streaming output):\n")
@@ -811,7 +810,7 @@ gpgcheck=0
         print(
             f"GPU Architecture(s): {self.gfx_arch_list} (using first: {self.gfx_arch})"
         )
-        print(f"Packages (in order): {self.package_names}")
+        print(f"Package Name: {self.package_name}")
         print(f"Install Prefix: {self.install_prefix}")
 
         try:
