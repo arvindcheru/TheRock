@@ -7,7 +7,7 @@
 # Package mapping by os_profile (default: distro python3 on PATH):
 #
 # - ubuntu* / debian* -> apt: python3, python3-venv, python3-pip -> PYTHON_CMD=python3
-# - sles* -> zypper: python3, python3-venv, python3-pip -> PYTHON_CMD=python3
+# - sles* -> zypper: python313, python313-pip (SLE/BCI; unversioned python3 / python3-pip are not valid package names) -> PYTHON_CMD=python3.13
 # - else (e.g. UBI 10 / RHEL-like) -> dnf: python3, python3-pip -> PYTHON_CMD=python3
 #
 # Optional --python-version X.Y (e.g. 3.12): install that stream where supported
@@ -76,6 +76,11 @@ if [[ -z "$OS_PROFILE" ]]; then
     exit 1
 fi
 
+# Trim whitespace; lowercase for glob matching (e.g. SLES16 must match sles*)
+OS_PROFILE="${OS_PROFILE#"${OS_PROFILE%%[![:space:]]*}"}"
+OS_PROFILE="${OS_PROFILE%"${OS_PROFILE##*[![:space:]]}"}"
+OS_PLC="${OS_PROFILE,,}"
+
 if [[ -n "$PY_MM" ]] && ! [[ "$PY_MM" =~ ^[0-9]+\.[0-9]+$ ]]; then
     echo "Error: --python-version must be MAJOR.MINOR (e.g. 3.12)" >&2
     exit 1
@@ -83,6 +88,9 @@ fi
 
 if [[ -n "$PY_MM" ]]; then
     PYTHON_CMD="python${PY_MM}"
+elif [[ "$OS_PLC" == sles* ]]; then
+    # SLE/BCI: no installable "python3" metapackage; use python313 -> python3.13
+    PYTHON_CMD="python3.13"
 else
     PYTHON_CMD="python3"
 fi
@@ -107,13 +115,12 @@ install_python_runtime() {
         fi
     elif [[ "$os_profile" == sles* ]]; then
         if [[ -n "$PY_MM" ]]; then
-            echo "Warning: --python-version is not applied on SLES; installing distro python3 packages" >&2
+            echo "Warning: --python-version is not applied on SLES; using python313 stack" >&2
         fi
         zypper --non-interactive refresh >&2
         zypper --non-interactive install -y \
-            python3 \
-            python3-venv \
-            python3-pip >&2
+            python313 \
+            python313-pip >&2
     else
         # dnf: UBI 9 / RHEL 9 default python3 may be < 3.12; use --python-version 3.12 when needed
         if [[ -n "$PY_MM" ]]; then
@@ -130,7 +137,7 @@ install_python_runtime() {
 
 # Install first so emitted PYTHON_CMD exists on PATH for later workflow steps
 if [[ "$INSTALL_RUNTIME" == true ]]; then
-    install_python_runtime "$OS_PROFILE"
+    install_python_runtime "$OS_PLC"
 fi
 
 # Emit output in requested format
